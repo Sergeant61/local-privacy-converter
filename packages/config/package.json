@@ -1,0 +1,12 @@
+{
+  "name": "@lfc/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": ["tsconfig", "eslint.config.js", "prettier.config.js"],
+  "exports": {
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./eslint": "./eslint.config.js",
+    "./prettier": "./prettier.config.js"
+  }
+}

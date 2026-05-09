@@ -1,0 +1,5 @@
+.DS_Store
+/build
+/.svelte-kit
+/package
+/dist-electron

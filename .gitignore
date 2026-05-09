@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+.svelte-kit
+.turbo
+*.log
+.DS_Store
+dist-electron
+.env
+.env.*
+!.env.example
+.pnpm-store
