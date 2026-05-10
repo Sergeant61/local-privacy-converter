@@ -37,6 +37,9 @@ const GET_OUTPUT_DIR_CHANNEL = "lfc/media/get-output-dir";
 const SHOW_IN_FOLDER_CHANNEL = "lfc/shell/show-in-folder";
 const CANCEL_CONVERT_CHANNEL = "lfc/ffmpeg/cancel-convert";
 
+// Must be set before app.whenReady() so menu bar and dock show the correct name
+app.setName("Local Privacy Converter");
+
 let currentConvertAbort: AbortController | null = null;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -325,6 +328,7 @@ async function createWindow(): Promise<void> {
     height: 660,
     minWidth: 920,
     minHeight: 600,
+    title: "Local Privacy Converter",
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),

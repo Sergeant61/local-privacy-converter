@@ -4,6 +4,7 @@ copyright: Copyright © 2025
 
 directories:
   output: release/${version}
+  buildResources: build-resources
 
 # Renderer (SvelteKit static build) + bundled Electron main/preload
 files:
