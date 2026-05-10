@@ -1,13 +1,19 @@
 {
   "name": "desktop",
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Local Privacy Converter — offline media conversion desktop app",
+  "author": "Recep Özen",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sergeant61/local-privacy-converter.git"
+  },
   "private": true,
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
     "prepare": "svelte-kit sync",
     "build:electron": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.js --external:electron --external:ffprobe-static --format=esm && esbuild electron/preload.ts --bundle --platform=node --outfile=dist-electron/preload.cjs --external:electron --format=cjs",
-    "build": "svelte-kit sync && vite build && pnpm run build:electron",
+    "build": "svelte-kit sync && vite build && node scripts/patch-build-for-file-url.mjs && pnpm run build:electron",
     "dev:renderer": "vite dev --host 127.0.0.1 --port 5173 --strictPort",
     "dev:bundle-main": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.js --external:electron --external:ffprobe-static --format=esm --watch",
     "dev:bundle-preload": "esbuild electron/preload.ts --bundle --platform=node --outfile=dist-electron/preload.cjs --external:electron --format=cjs --watch",

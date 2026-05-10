@@ -1,5 +1,13 @@
 {
   "name": "local-file-converter",
+  "version": "1.0.0",
+  "author": "Recep Özen",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sergeant61/local-privacy-converter.git"
+  },
+  "homepage": "https://github.com/Sergeant61/local-privacy-converter",
+  "bugs": "https://github.com/Sergeant61/local-privacy-converter/issues",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,7 +15,12 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "format": "prettier --write \"**/*.{js,ts,svelte,json,md}\""
+    "format": "prettier --write \"**/*.{js,ts,svelte,json,md}\"",
+    "dist": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --publish never",
+    "dist:mac": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --mac --publish never",
+    "dist:win": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --win --publish never",
+    "dist:linux": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --linux --publish never",
+    "dist:dir": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --dir --publish never"
   },
   "devDependencies": {
     "@lfc/config": "workspace:*",

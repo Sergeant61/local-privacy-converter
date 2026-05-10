@@ -343,7 +343,9 @@ async function createWindow(): Promise<void> {
     await window.loadURL(devUrl);
     window.webContents.openDevTools({ mode: "detach" });
   } else {
-    await window.loadFile(path.join(__dirname, "..", "build", "index.html"));
+    await window.loadFile(path.join(__dirname, "..", "build", "index.html"), {
+      hash: "/"
+    });
   }
 }
 
