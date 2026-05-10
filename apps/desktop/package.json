@@ -1,8 +1,11 @@
 {
   "name": "desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Local Privacy Converter — offline media conversion desktop app",
-  "author": "Recep Özen",
+  "author": {
+    "name": "Recep Özen",
+    "email": "sergeant61@users.noreply.github.com"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Sergeant61/local-privacy-converter.git"

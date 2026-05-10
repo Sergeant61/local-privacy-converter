@@ -51,6 +51,7 @@ nsis:
 # ── Linux ──────────────────────────────────────────────────────────────────
 linux:
   category: Utility
+  maintainer: Recep Özen <sergeant61@users.noreply.github.com>
   target:
     - target: AppImage
       arch:

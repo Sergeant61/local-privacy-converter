@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# Node 20 tabanlı action uyarılarını önlemek ve GitHub’un Node 24 geçişine uyum:
+# https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── Build ──────────────────────────────────────────────────────────────────
   build:
@@ -19,7 +24,9 @@ jobs:
             artifact: mac-arm64
             eb_args: --mac --arm64
 
-          - os: macos-13       # Intel (x64)
+          # Intel (x86_64): macos-13 Dec 2025’te kaldırıldı → macos-15-intel
+          # https://github.blog/changelog/2025-09-19-github-actions-macos-13-runner-image-is-closing-down/
+          - os: macos-15-intel
             artifact: mac-x64
             eb_args: --mac --x64
 
@@ -34,11 +41,11 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -64,7 +71,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
           # Collect only distributable file types; skip blockmap / yaml meta
@@ -82,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           path: artifacts
           merge-multiple: true
