@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Build ──────────────────────────────────────────────────────────────────
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest   # Apple Silicon (arm64)
+            artifact: mac-arm64
+            eb_args: --mac --arm64
+
+          - os: macos-13       # Intel (x64)
+            artifact: mac-x64
+            eb_args: --mac --x64
+
+          - os: windows-latest
+            artifact: win-x64
+            eb_args: --win --x64
+
+          - os: ubuntu-latest
+            artifact: linux-x64
+            eb_args: --linux --x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Set version from tag
+        shell: bash
+        run: node scripts/set-version.mjs "${GITHUB_REF_NAME#v}"
+
+      - name: Build all packages (turbo)
+        run: pnpm run build
+
+      - name: Stage FFmpeg + ffprobe binaries
+        run: node scripts/prepare-ffmpeg.mjs
+
+      - name: Package Electron app
+        run: pnpm exec electron-builder ${{ matrix.eb_args }} --publish never
+        working-directory: apps/desktop
+        env:
+          # Needed by electron-builder even with --publish never
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          # Collect only distributable file types; skip blockmap / yaml meta
+          path: |
+            apps/desktop/release/**/*.dmg
+            apps/desktop/release/**/*.zip
+            apps/desktop/release/**/*.exe
+            apps/desktop/release/**/*.AppImage
+            apps/desktop/release/**/*.deb
+          if-no-files-found: error
+
+  # ── GitHub Release ─────────────────────────────────────────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List collected artifacts
+        run: find artifacts -type f | sort
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            artifacts/*.dmg
+            artifacts/*.zip
+            artifacts/*.exe
+            artifacts/*.AppImage
+            artifacts/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,64 @@
+appId: io.lpc.desktop
+productName: Local Privacy Converter
+copyright: Copyright © 2025
+
+directories:
+  output: release/${version}
+
+# Renderer (SvelteKit static build) + bundled Electron main/preload
+files:
+  - build/**
+  - dist-electron/**
+
+# ffmpeg + ffprobe binaries staged by scripts/prepare-ffmpeg.mjs
+extraResources:
+  - from: extra-resources/ffmpeg
+    to: ffmpeg
+
+asar: true
+
+# ── macOS ──────────────────────────────────────────────────────────────────
+mac:
+  category: public.app-category.utilities
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+    - target: zip
+      arch:
+        - arm64
+        - x64
+
+dmg:
+  writeUpdateInfo: false
+
+# ── Windows ────────────────────────────────────────────────────────────────
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Local Privacy Converter
+
+# ── Linux ──────────────────────────────────────────────────────────────────
+linux:
+  category: Utility
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+
+# GitHub Releases
+publish:
+  provider: github
+  releaseType: release

@@ -10,3 +10,7 @@ dist-electron
 .env.*
 !.env.example
 .pnpm-store
+
+# electron-builder output + staged binaries (CI generated)
+apps/desktop/release/
+apps/desktop/extra-resources/
