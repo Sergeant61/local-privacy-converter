@@ -97,6 +97,22 @@ jobs:
       - name: List collected artifacts
         run: find artifacts -type f | sort
 
+      # fail_on_unmatched_files: her glob için ayrı; bazı OS'ler .zip üretmeyebilir → false
+      - name: Ensure built installers were downloaded
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find artifacts -type f \( \
+            -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.zip' \
+          \))
+          if ((${#assets[@]} == 0)); then
+            echo "::error::No installer files under artifacts/ (check build outputs and download paths)."
+            exit 1
+          fi
+          echo "Release asset count: ${#assets[@]}"
+
+      # Dosyalar upload-artifact ile klasör yapısı korunarak gelir:
+      # artifacts/apps/desktop/release/<version>/… (düz artifacts/*.dmg eşleşmez)
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -105,10 +121,10 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: false
           files: |
-            artifacts/*.dmg
-            artifacts/*.zip
-            artifacts/*.exe
-            artifacts/*.AppImage
-            artifacts/*.deb
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.exe
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
