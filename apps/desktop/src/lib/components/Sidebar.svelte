@@ -3,13 +3,7 @@
   import { browser } from "$app/environment";
   import { onMount } from "svelte";
   import NavFeatureIcon from "./NavFeatureIcon.svelte";
-
-  type HistoryItem = {
-    id: string;
-    label: string;
-    status: "done" | "error" | "queued";
-    at: string;
-  };
+  import { historyItems, loadHistory, clearHistory } from "$lib/history/store";
 
   type Props = {
     mobile: boolean;
@@ -19,21 +13,17 @@
   let { mobile, drawerOpen = $bindable(false) }: Props = $props();
 
   let collapsed = $state(false);
+  const hasLfc = browser && typeof window !== "undefined" && "lfc" in window && !!window.lfc;
 
   onMount(() => {
-    if (!browser) {
-      return;
-    }
+    if (!browser) return;
     const stored = localStorage.getItem("lpc-sidebar-collapsed");
-    if (stored === "1") {
-      collapsed = true;
-    }
+    if (stored === "1") collapsed = true;
+    void loadHistory();
   });
 
   function persistCollapsed(value: boolean) {
-    if (browser) {
-      localStorage.setItem("lpc-sidebar-collapsed", value ? "1" : "0");
-    }
+    if (browser) localStorage.setItem("lpc-sidebar-collapsed", value ? "1" : "0");
   }
 
   function togglePanel() {
@@ -46,9 +36,13 @@
   }
 
   function closeDrawerAfterNav() {
-    if (mobile) {
-      drawerOpen = false;
-    }
+    if (mobile) drawerOpen = false;
+  }
+
+  function formatTime(ts: number): string {
+    const d = new Date(ts);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   const features = [
@@ -59,23 +53,6 @@
     { href: "#", label: "Video birleştirme", soon: true, icon: "videoMerge" },
     { href: "#", label: "Kare çıkarma", soon: true, icon: "frames" }
   ] as const;
-
-  const defaultHistory: HistoryItem[] = [
-    {
-      id: "demo-1",
-      label: "tatil.mp4 → webm",
-      status: "done",
-      at: "09.05.2026 14:22"
-    },
-    {
-      id: "demo-2",
-      label: "kayit.wav → mp3",
-      status: "error",
-      at: "08.05.2026 10:01"
-    }
-  ];
-
-  const rows = $derived(defaultHistory);
 </script>
 
 <aside
@@ -129,19 +106,47 @@
   </div>
 
   <div class="history-block">
-    <p class="nav-heading">Geçmiş</p>
+    <div class="history-heading-row">
+      <p class="nav-heading">Geçmiş</p>
+      {#if $historyItems.length > 0}
+        <button
+          type="button"
+          class="clear-btn"
+          title="Geçmişi temizle"
+          onclick={() => void clearHistory()}
+        >Temizle</button>
+      {/if}
+    </div>
     <ul class="history-list">
-      {#each rows as row (row.id)}
-        <li class="history-item">
-          <span class="history-label">{row.label}</span>
-          <span class="history-meta">
-            <span class="status" data-status={row.status}>
-              {row.status === "done" ? "Tamam" : row.status === "error" ? "Hata" : "Sırada"}
+      {#if $historyItems.length === 0}
+        <li class="history-empty">Henüz dönüşüm yok.</li>
+      {:else}
+        {#each $historyItems as row (row.id)}
+          <li class="history-item">
+            <span class="history-label" title="{row.inputFilename} → {row.outputExt}">
+              {row.inputFilename} → {row.outputExt}
             </span>
-            <span class="time">{row.at}</span>
-          </span>
-        </li>
-      {/each}
+            <span class="history-meta">
+              <span class="status" data-status={row.status === "success" ? "done" : "error"}>
+                {row.status === "success" ? "Tamam" : "Hata"}
+              </span>
+              <span class="time">{formatTime(row.timestamp)}</span>
+            </span>
+            {#if row.status === "success" && hasLfc}
+              <button
+                type="button"
+                class="history-folder-btn"
+                onclick={() => void window.lfc.showInFolder(row.outputPath)}
+              >Dizinde göster</button>
+            {/if}
+            {#if row.status === "error" && row.errorMessage}
+              <span class="history-error-msg" title={row.errorMessage}>
+                {row.errorMessage.slice(0, 60)}{row.errorMessage.length > 60 ? "…" : ""}
+              </span>
+            {/if}
+          </li>
+        {/each}
+      {/if}
     </ul>
   </div>
 </aside>
@@ -350,6 +355,33 @@
     background: rgba(0, 0, 0, 0.12);
   }
 
+  .history-heading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .history-heading-row .nav-heading {
+    margin: 0;
+  }
+
+  .clear-btn {
+    font: inherit;
+    font-size: 0.7rem;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
+  }
+
+  .clear-btn:hover {
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.08);
+  }
+
   .history-list {
     list-style: none;
     margin: 0;
@@ -358,6 +390,13 @@
     display: flex;
     flex-direction: column;
     gap: 0.45rem;
+  }
+
+  .history-empty {
+    font-size: 0.82rem;
+    color: var(--muted);
+    padding: 0.5rem 0.25rem;
+    font-style: italic;
   }
 
   .history-item {
@@ -373,6 +412,9 @@
   .history-label {
     font-size: 0.86rem;
     font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .history-meta {
@@ -392,6 +434,32 @@
   }
 
   .time {
+    white-space: nowrap;
+  }
+
+  .history-folder-btn {
+    font: inherit;
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    cursor: pointer;
+    padding: 0.15rem 0.4rem;
+    align-self: flex-start;
+  }
+
+  .history-folder-btn:hover {
+    color: var(--text);
+    border-color: var(--accent-start);
+  }
+
+  .history-error-msg {
+    font-size: 0.72rem;
+    color: var(--danger);
+    opacity: 0.8;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 

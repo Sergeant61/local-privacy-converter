@@ -1,5 +1,5 @@
 {
-  "name": "@lfc/ffmpeg-core",
+  "name": "@lfc/media-formats",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,10 +7,6 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
-    },
-    "./build-args": {
-      "types": "./src/build-args.ts",
-      "default": "./src/build-args.ts"
     }
   },
   "scripts": {
@@ -18,13 +14,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@lfc/ffmpeg-presets": "workspace:*",
-    "@lfc/media-formats": "workspace:*",
     "@lfc/types": "workspace:*"
   },
   "devDependencies": {
     "@lfc/config": "workspace:*",
-    "@types/node": "^24.10.7",
     "typescript": "~5.7.3"
   }
 }

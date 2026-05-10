@@ -9,87 +9,17 @@
 
 import { spawn } from "node:child_process";
 
-import type { ConvertJobSpec, FfmpegProbeResult } from "@lfc/types";
+import type { FfmpegProbeResult } from "@lfc/types";
 
-import {
-  balancedAacAudio,
-  cpuCompatibleH264Preset,
-  copyStreams,
-  fastNvencCompatibleH264
-} from "@lfc/ffmpeg-presets";
-
-function vfScale(width?: number, height?: number, fps?: number): string[] {
-  const segments: string[] = [];
-  if (width ?? height) {
-    const w = width ?? -2;
-    const h = height ?? -2;
-    segments.push(`scale=${w}:${h}`);
-  }
-  if (fps) {
-    segments.push(`fps=${fps}`);
-  }
-  if (!segments.length) {
-    return [];
-  }
-  return ["-vf", segments.join(",")];
-}
-
-function pickCpuVideoArgs(encoder: ConvertJobSpec["videoEncoder"]) {
-  if (encoder === "h264_nvenc") {
-    return fastNvencCompatibleH264();
-  }
-  switch (encoder) {
-    case "libx265":
-      return ["-c:v", "libx265", "-crf", "28", "-preset", "medium"];
-    case "libsvtav1":
-      return ["-c:v", "libsvtav1", "-crf", "30", "-preset", "8"];
-    case "libx264":
-    default:
-      return [...cpuCompatibleH264Preset()];
-  }
-}
-
-/** Yüksek seviye iş tanımından `spawn` uyumlu argüman dizisi üretir. */
-export function buildFfmpegArgs(spec: ConvertJobSpec): string[] {
-  const args = ["-hide_banner", "-nostdin", "-y"];
-
-  args.push("-i", spec.inputPath);
-
-  if (spec.mode === "copy") {
-    args.push(...copyStreams());
-    args.push(spec.outputPath);
-    return args;
-  }
-
-  const stripVideo = spec.videoHints?.stripVideo ?? false;
-  if (!stripVideo) {
-    args.push(...vfScale(spec.videoHints?.width, spec.videoHints?.height, spec.videoHints?.fps));
-    args.push(...pickCpuVideoArgs(spec.videoEncoder ?? "libx264"));
-  }
-
-  switch (spec.audioEncoder ?? "aac") {
-    case "copy":
-      args.push("-c:a", "copy");
-      break;
-    case "libmp3lame":
-      args.push("-c:a", "libmp3lame", "-b:a", "192k");
-      break;
-    case "libopus":
-      args.push("-c:a", "libopus", "-b:a", "128k");
-      break;
-    case "aac":
-    default:
-      args.push(...balancedAacAudio());
-      break;
-  }
-
-  if (stripVideo) {
-    args.push("-vn");
-  }
-
-  args.push(spec.outputPath);
-  return args;
-}
+export {
+  listFfmpegCapabilities,
+  parseFfmpegCodecTable,
+  parseHwaccels
+} from "./capabilities";
+export { buildFfmpegArgs } from "./build-args";
+export { ffprobeJsonToSummary, runFfprobeJson } from "./ffprobe";
+export type { FfprobeFileJson, FfprobeFormatJson, FfprobeStreamJson } from "./ffprobe";
+export { runFfmpegJob } from "./run-ffmpeg";
 
 async function drainStream(stream?: NodeJS.ReadableStream): Promise<string> {
   if (!stream) {

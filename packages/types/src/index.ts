@@ -24,9 +24,16 @@ export type VideoEncoderChoice =
   | "h264_videotoolbox"
   | "hevc_videotoolbox"
   | "h264_vaapi"
-  | "hevc_vaapi";
+  | "hevc_vaapi"
+  | "libvpx-vp9"
+  /** Tek kare / görüntü çıktısı (-c:v png). */
+  | "png"
+  /** JPEG çıktısı (-c:v mjpeg, görüntü yolu). */
+  | "mjpeg"
+  /** WebP çıktısı (-c:v libwebp). */
+  | "libwebp";
 
-export type AudioEncoderChoice = "aac" | "libmp3lame" | "libopus" | "copy";
+export type AudioEncoderChoice = "aac" | "libmp3lame" | "libopus" | "pcm_s16le" | "flac" | "copy";
 
 export type MediaKind = "video" | "audio" | "image-only";
 
@@ -44,6 +51,12 @@ export interface VideoTranscodeHints {
   fps?: number;
   /** Videoyu çıkarmadan sadece ses kopyala / transcode. */
   stripVideo?: boolean;
+  /** UI kalite ön ayarı — transcode bitrate/CRF seçimine yansır. */
+  qualityPreset?: "high" | "compatible" | "balanced" | "small" | "very_small";
+  /** Hedef çıktı boyutu (MB). Ayarlandığında FFmpeg'e -fs ile iletilir. */
+  targetSizeMb?: number;
+  /** Hedef en-boy oranı "W:H" formatında (ör. "16:9"). Crop filter ile uygulanır. */
+  aspectRatio?: string;
 }
 
 export interface ConvertJobSpec extends PathsInput {
@@ -54,6 +67,28 @@ export interface ConvertJobSpec extends PathsInput {
   videoHints?: VideoTranscodeHints;
   /** Remux sırasında tüm akışların kopyalanması (mode copy). */
   copyAllStreams?: boolean;
+  /**
+   * Çıktıda yalnızca ses (ör. mp3, wav, m4a). Video akışı yazılmaz (-vn).
+   */
+  audioOnlyOutput?: boolean;
+}
+
+/** ffprobe IPC özeti — renderer hedef listesini süzer. */
+export interface MediaProbeSummary {
+  formatName: string;
+  durationSec: number | null;
+  hasVideo: boolean;
+  hasAudio: boolean;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  inferredKind: MediaKind;
+}
+
+/** `ffmpeg -encoders` / `-decoders` / `-hwaccels` ayrıştırılmış sonuç. */
+export interface FfmpegCapabilities {
+  encoders: string[];
+  decoders: string[];
+  hwaccels: string[];
 }
 
 /** IPC / UI iş kuyruğu için iskelet. */
