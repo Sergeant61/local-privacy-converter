@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from "electron";
 
 import type { MediaProbeSummary } from "@lfc/types";
 import {
@@ -136,11 +136,17 @@ function setTaskbarProgress(progress: number | null) {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, "..", "build-resources", "icon.png");
-  const fallbackIcon = path.join(app.getAppPath(), "build-resources", "icon.png");
-  const usedIcon = fs.existsSync(iconPath) ? iconPath : fallbackIcon;
+  // Packaged: icon lives in process.resourcesPath (extraResources → tray-icon.png)
+  // Dev: load from build-resources relative to source
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, "tray-icon.png")
+    : path.join(__dirname, "..", "build-resources", "tray-icon.png");
+
   try {
-    tray = new Tray(usedIcon);
+    const img = nativeImage.createFromPath(iconPath);
+    // Template image adapts automatically to dark/light menu bar on macOS
+    if (process.platform === "darwin") img.setTemplateImage(true);
+    tray = new Tray(img);
     tray.setToolTip("Local Privacy Converter");
     updateTrayMenu("Hazır");
     tray.on("double-click", () => {
@@ -1328,7 +1334,7 @@ function wireIpcHandlers() {
         return { ok: false, message: e instanceof Error ? e.message : String(e) };
       }
       const result = await runFfprobeJson(ffprobeExec, inputPath);
-      if (!result.ok) return { ok: false, message: result.stderr };
+      if (!result.ok) return { ok: false, message: result.message };
       const tags: Record<string, string> = {};
       const formatTags = (result.json as { format?: { tags?: Record<string, string> } }).format?.tags ?? {};
       for (const [k, v] of Object.entries(formatTags)) {
