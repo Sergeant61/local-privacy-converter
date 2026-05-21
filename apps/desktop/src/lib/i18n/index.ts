@@ -1,12 +1,14 @@
 import { browser } from "$app/environment";
-import { register, init, getLocaleFromNavigator, locale } from "svelte-i18n";
+import { addMessages, init, getLocaleFromNavigator, locale } from "svelte-i18n";
+import tr from "./tr.json";
+import en from "./en.json";
 
 const STORAGE_KEY = "lpc-locale";
 export const SUPPORTED_LOCALES = ["tr", "en"] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
-register("tr", () => import("./tr.json"));
-register("en", () => import("./en.json"));
+addMessages("tr", tr);
+addMessages("en", en);
 
 export function setupI18n() {
   const saved = browser ? (localStorage.getItem(STORAGE_KEY) as SupportedLocale | null) : null;
