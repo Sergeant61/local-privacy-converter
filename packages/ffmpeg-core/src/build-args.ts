@@ -152,9 +152,12 @@ export function buildFfmpegArgs(spec: ConvertJobSpec): string[] {
 
   args.push("-i", spec.inputPath);
 
+  const extra = spec.extraFfmpegArgs?.filter((a) => a.trim().length > 0) ?? [];
+  const acArgs = spec.audioChannels != null ? ["-ac", String(spec.audioChannels)] : [];
+
   if (spec.mode === "copy") {
     args.push(...copyStreams());
-    args.push(spec.outputPath);
+    args.push(...extra, spec.outputPath);
     return args;
   }
 
@@ -166,7 +169,8 @@ export function buildFfmpegArgs(spec: ConvertJobSpec): string[] {
   if (audioOnlyOutput) {
     args.push("-vn");
     args.push(...pickAudioEncoderArgs(spec.audioEncoder, q));
-    args.push(...fsA, spec.outputPath);
+    args.push(...acArgs);
+    args.push(...fsA, ...extra, spec.outputPath);
     return args;
   }
 
@@ -178,13 +182,14 @@ export function buildFfmpegArgs(spec: ConvertJobSpec): string[] {
     args.push(...vfScale(spec.videoHints?.width, spec.videoHints?.height, spec.videoHints?.fps, spec.videoHints?.aspectRatio));
     args.push(...videoArgsForEncoder(spec.videoEncoder, q));
     args.push("-an");
-    args.push(...fsA, spec.outputPath);
+    args.push(...fsA, ...extra, spec.outputPath);
     return args;
   }
 
   args.push(...vfScale(spec.videoHints?.width, spec.videoHints?.height, spec.videoHints?.fps, spec.videoHints?.aspectRatio));
   args.push(...videoArgsForEncoder(spec.videoEncoder ?? "libx264", q));
   args.push(...pickAudioEncoderArgs(spec.audioEncoder, q));
-  args.push(...fsA, spec.outputPath);
+  args.push(...acArgs);
+  args.push(...fsA, ...extra, spec.outputPath);
   return args;
 }

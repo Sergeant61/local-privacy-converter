@@ -2,6 +2,8 @@ import type { ConversionMode, MediaKind } from "@lfc/types";
 
 export type TargetProfileId =
   | "mp4-h264-aac"
+  | "mp4-h265-aac"
+  | "mp4-av1-aac"
   | "webm-vp9-opus"
   | "mkv-h264-aac"
   | "audio-mp3"
@@ -13,6 +15,7 @@ export type TargetProfileId =
   | "image-png"
   | "image-jpeg"
   | "image-webp"
+  | "image-avif"
   // Sosyal medya presetleri
   | "social-wp-video"
   | "social-wp-image"
@@ -24,10 +27,16 @@ export type TargetProfileId =
   | "social-msg-image"
   | "social-tg-video"
   | "social-tg-image"
-  | "social-tg-audio";
+  | "social-tg-audio"
+  | "social-yt-1080"
+  | "social-yt-4k"
+  | "social-tt-video"
+  | "social-li-video"
+  | "social-x-video"
+  | "social-dc-video";
 
 export interface SocialMeta {
-  platform: "whatsapp" | "instagram" | "messenger" | "telegram";
+  platform: "whatsapp" | "instagram" | "messenger" | "telegram" | "youtube" | "tiktok" | "linkedin" | "x" | "discord";
   /** UI’da `<optgroup>` başlığı */
   platformLabelTr: string;
   /** Platform dosya boyutu sınırı (MB) — video/ses için `-fs` ile uygulanır */
@@ -67,6 +76,28 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     mode: "transcode",
     allowedInputKinds: NON_IMAGE,
     requiredEncoders: ["libx264", "aac"],
+    requiredDecoders: [],
+    hasVideoOut: true
+  },
+  {
+    id: "mp4-h265-aac",
+    labelTr: "MP4 (H.265 / HEVC + AAC)",
+    descriptionTr: "H.264'e kıyasla ~%50 daha küçük dosya; Apple ve modern cihazlarda desteklenir.",
+    outputExtension: "mp4",
+    mode: "transcode",
+    allowedInputKinds: NON_IMAGE,
+    requiredEncoders: ["libx265", "aac"],
+    requiredDecoders: [],
+    hasVideoOut: true
+  },
+  {
+    id: "mp4-av1-aac",
+    labelTr: "MP4 (AV1 + AAC)",
+    descriptionTr: "Açık kaynak, en verimli sıkıştırma; Netflix ve YouTube standartlarında kullanılır.",
+    outputExtension: "mp4",
+    mode: "transcode",
+    allowedInputKinds: NON_IMAGE,
+    requiredEncoders: ["libsvtav1", "aac"],
     requiredDecoders: [],
     hasVideoOut: true
   },
@@ -188,6 +219,17 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     mode: "transcode",
     allowedInputKinds: ["image-only"],
     requiredEncoders: ["libwebp"],
+    requiredDecoders: [],
+    hasVideoOut: true
+  },
+  {
+    id: "image-avif",
+    labelTr: "AVIF (görüntü)",
+    descriptionTr: "Modern web formatı; AV1 tabanlı yüksek sıkıştırma (libsvtav1).",
+    outputExtension: "avif",
+    mode: "transcode",
+    allowedInputKinds: ["image-only"],
+    requiredEncoders: ["libsvtav1"],
     requiredDecoders: [],
     hasVideoOut: true
   },
@@ -396,6 +438,130 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
       platformLabelTr: "Telegram Business",
       maxFileSizeMb: 2000,
       infoTr: "MP3 · Maks. 2 GB"
+    }
+  },
+
+  // ── YouTube ───────────────────────────────────────────────────────────────
+  {
+    id: "social-yt-1080",
+    labelTr: "1080p HD (1920×1080, H.264)",
+    descriptionTr: "YouTube: 1080p HD, MP4 H.264 + AAC, 16:9.",
+    outputExtension: "mp4",
+    mode: "transcode",
+    allowedInputKinds: ["video"],
+    requiredEncoders: ["libx264", "aac"],
+    requiredDecoders: [],
+    hasVideoOut: true,
+    socialMeta: {
+      platform: "youtube",
+      platformLabelTr: "YouTube",
+      maxFileSizeMb: 128000,
+      forcedWidth: 1920,
+      forcedHeight: 1080,
+      infoTr: "MP4 H.264 + AAC · 1920×1080 (16:9) · Maks. 128 GB"
+    }
+  },
+  {
+    id: "social-yt-4k",
+    labelTr: "4K UHD (3840×2160, H.264)",
+    descriptionTr: "YouTube: 4K UHD, MP4 H.264 + AAC, 16:9.",
+    outputExtension: "mp4",
+    mode: "transcode",
+    allowedInputKinds: ["video"],
+    requiredEncoders: ["libx264", "aac"],
+    requiredDecoders: [],
+    hasVideoOut: true,
+    socialMeta: {
+      platform: "youtube",
+      platformLabelTr: "YouTube",
+      maxFileSizeMb: 128000,
+      forcedWidth: 3840,
+      forcedHeight: 2160,
+      infoTr: "MP4 H.264 + AAC · 3840×2160 (4K) · Maks. 128 GB"
+    }
+  },
+
+  // ── TikTok ────────────────────────────────────────────────────────────────
+  {
+    id: "social-tt-video",
+    labelTr: "Video (1080×1920, 9:16 dikey)",
+    descriptionTr: "TikTok: dikey format, MP4 H.264 + AAC, maks. 287 MB.",
+    outputExtension: "mp4",
+    mode: "transcode",
+    allowedInputKinds: ["video"],
+    requiredEncoders: ["libx264", "aac"],
+    requiredDecoders: [],
+    hasVideoOut: true,
+    socialMeta: {
+      platform: "tiktok",
+      platformLabelTr: "TikTok",
+      maxFileSizeMb: 287,
+      forcedWidth: 1080,
+      forcedHeight: 1920,
+      infoTr: "MP4 H.264 + AAC · 1080×1920 (9:16 dikey) · Maks. 287 MB"
+    }
+  },
+
+  // ── LinkedIn ──────────────────────────────────────────────────────────────
+  {
+    id: "social-li-video",
+    labelTr: "Video (1920×1080, 16:9, maks. 5 GB)",
+    descriptionTr: "LinkedIn: yatay format, MP4 H.264 + AAC.",
+    outputExtension: "mp4",
+    mode: "transcode",
+    allowedInputKinds: ["video"],
+    requiredEncoders: ["libx264", "aac"],
+    requiredDecoders: [],
+    hasVideoOut: true,
+    socialMeta: {
+      platform: "linkedin",
+      platformLabelTr: "LinkedIn",
+      maxFileSizeMb: 5000,
+      forcedWidth: 1920,
+      forcedHeight: 1080,
+      infoTr: "MP4 H.264 + AAC · 1920×1080 (16:9) · Maks. 5 GB"
+    }
+  },
+
+  // ── X (Twitter) ───────────────────────────────────────────────────────────
+  {
+    id: "social-x-video",
+    labelTr: "Video (1920×1080, maks. 512 MB)",
+    descriptionTr: "X (Twitter): MP4 H.264 + AAC, maks. 512 MB, maks. 140 sn.",
+    outputExtension: "mp4",
+    mode: "transcode",
+    allowedInputKinds: ["video"],
+    requiredEncoders: ["libx264", "aac"],
+    requiredDecoders: [],
+    hasVideoOut: true,
+    socialMeta: {
+      platform: "x",
+      platformLabelTr: "X (Twitter)",
+      maxFileSizeMb: 512,
+      forcedWidth: 1920,
+      forcedHeight: 1080,
+      infoTr: "MP4 H.264 + AAC · 1920×1080 · Maks. 512 MB · Maks. 140 sn"
+    }
+  },
+
+  // ── Discord ───────────────────────────────────────────────────────────────
+  {
+    id: "social-dc-video",
+    labelTr: "Video (1920×1080, maks. 10 MB)",
+    descriptionTr: "Discord: Nitro olmadan maks. 10 MB, MP4 H.264 + AAC.",
+    outputExtension: "mp4",
+    mode: "transcode",
+    allowedInputKinds: ["video"],
+    requiredEncoders: ["libx264", "aac"],
+    requiredDecoders: [],
+    hasVideoOut: true,
+    socialMeta: {
+      platform: "discord",
+      platformLabelTr: "Discord",
+      maxFileSizeMb: 10,
+      forcedWidth: 1920,
+      forcedHeight: 1080,
+      infoTr: "MP4 H.264 + AAC · 1920×1080 · Maks. 10 MB (Nitro'suz)"
     }
   }
 ];

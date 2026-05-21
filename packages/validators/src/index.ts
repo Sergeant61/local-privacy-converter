@@ -136,7 +136,9 @@ export const convertJobSpecSchema = z.object({
     videoTranscodeHintsSchema.optional()
   ),
   copyAllStreams: z.boolean().optional(),
-  audioOnlyOutput: z.boolean().optional()
+  audioOnlyOutput: z.boolean().optional(),
+  extraFfmpegArgs: z.array(z.string()).optional(),
+  audioChannels: z.union([z.literal(1), z.literal(2)]).optional()
 });
 
 export const ipcRunConvertJobRequestSchema = z.object({

@@ -37,6 +37,8 @@ export type RunFfmpegJobOptions = {
    * Tamamlanırken (başarı) tek seferlik `100` gönderilir.
    */
   onProgress?: (percent: number | null) => void;
+  /** Her stderr satırı için çağrılır. UI log paneli için. */
+  onLog?: (line: string) => void;
   /** İptal sinyali. Abort edilince FFmpeg süreci SIGTERM ile sonlandırılır. */
   signal?: AbortSignal;
 };
@@ -53,6 +55,7 @@ export async function runFfmpegJob(
   const durationSec =
     durationRaw != null && Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
   const onProgress = options?.onProgress;
+  const onLog = options?.onLog;
 
   return await new Promise<RunFfmpegJobResult>((resolve) => {
     let settled = false;
@@ -108,11 +111,20 @@ export async function runFfmpegJob(
       }
     }
 
+    let stderrLineBuffer = "";
     let stderr = "";
     subprocess.stderr?.on("data", (chunk: Buffer | string) => {
       const piece = typeof chunk === "string" ? chunk : chunk.toString();
       stderr += piece;
       stderrRoll = (stderrRoll + piece).slice(-48_000);
+      if (onLog) {
+        stderrLineBuffer += piece;
+        const lines = stderrLineBuffer.split("\n");
+        stderrLineBuffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.trim()) onLog(line);
+        }
+      }
       if (durationSec == null) {
         return;
       }

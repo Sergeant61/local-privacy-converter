@@ -10,6 +10,8 @@ export type AdvancedFieldKey =
 
 const SIMPLE_BY_PROFILE: Record<TargetProfileId, SimpleFieldKey[]> = {
   "mp4-h264-aac": ["quality_preset", "resolution_preset"],
+  "mp4-h265-aac": ["quality_preset", "resolution_preset"],
+  "mp4-av1-aac": ["quality_preset", "resolution_preset"],
   "webm-vp9-opus": ["quality_preset", "resolution_preset"],
   "mkv-h264-aac": ["quality_preset", "resolution_preset"],
   "audio-mp3": ["quality_preset"],
@@ -21,6 +23,7 @@ const SIMPLE_BY_PROFILE: Record<TargetProfileId, SimpleFieldKey[]> = {
   "image-png": ["quality_preset"],
   "image-jpeg": ["quality_preset"],
   "image-webp": ["quality_preset"],
+  "image-avif": ["quality_preset"],
   // Sosyal medya presetleri — kalite/çözünürlük ayarı yok
   "social-wp-video": [],
   "social-wp-image": [],
@@ -32,11 +35,19 @@ const SIMPLE_BY_PROFILE: Record<TargetProfileId, SimpleFieldKey[]> = {
   "social-msg-image": [],
   "social-tg-video": [],
   "social-tg-image": [],
-  "social-tg-audio": []
+  "social-tg-audio": [],
+  "social-yt-1080": [],
+  "social-yt-4k": [],
+  "social-tt-video": [],
+  "social-li-video": [],
+  "social-x-video": [],
+  "social-dc-video": []
 };
 
 const ADVANCED_BY_PROFILE: Record<TargetProfileId, AdvancedFieldKey[]> = {
   "mp4-h264-aac": ["ffmpeg_version", "encoder_availability", "hwaccel_list", "override_video_encoder"],
+  "mp4-h265-aac": ["ffmpeg_version", "encoder_availability", "hwaccel_list", "override_video_encoder"],
+  "mp4-av1-aac": ["ffmpeg_version", "encoder_availability", "override_video_encoder"],
   "webm-vp9-opus": ["ffmpeg_version", "encoder_availability", "override_video_encoder"],
   "mkv-h264-aac": ["ffmpeg_version", "encoder_availability", "hwaccel_list", "override_video_encoder"],
   "audio-mp3": ["ffmpeg_version", "encoder_availability"],
@@ -48,6 +59,7 @@ const ADVANCED_BY_PROFILE: Record<TargetProfileId, AdvancedFieldKey[]> = {
   "image-png": ["ffmpeg_version", "encoder_availability"],
   "image-jpeg": ["ffmpeg_version", "encoder_availability"],
   "image-webp": ["ffmpeg_version", "encoder_availability"],
+  "image-avif": ["ffmpeg_version", "encoder_availability"],
   // Sosyal medya presetleri
   "social-wp-video": ["ffmpeg_version", "encoder_availability"],
   "social-wp-image": ["ffmpeg_version", "encoder_availability"],
@@ -59,7 +71,13 @@ const ADVANCED_BY_PROFILE: Record<TargetProfileId, AdvancedFieldKey[]> = {
   "social-msg-image": ["ffmpeg_version", "encoder_availability"],
   "social-tg-video": ["ffmpeg_version", "encoder_availability"],
   "social-tg-image": ["ffmpeg_version", "encoder_availability"],
-  "social-tg-audio": ["ffmpeg_version", "encoder_availability"]
+  "social-tg-audio": ["ffmpeg_version", "encoder_availability"],
+  "social-yt-1080": ["ffmpeg_version", "encoder_availability"],
+  "social-yt-4k": ["ffmpeg_version", "encoder_availability"],
+  "social-tt-video": ["ffmpeg_version", "encoder_availability"],
+  "social-li-video": ["ffmpeg_version", "encoder_availability"],
+  "social-x-video": ["ffmpeg_version", "encoder_availability"],
+  "social-dc-video": ["ffmpeg_version", "encoder_availability"]
 };
 
 export function getSimpleFieldsForProfile(id: TargetProfileId): SimpleFieldKey[] {

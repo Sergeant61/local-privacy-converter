@@ -21,6 +21,24 @@
   --backdrop: rgba(7, 16, 24, 0.55);
 }
 
+/* Açık tema */
+:root.light {
+  --bg: #f0f4f8;
+  --text: #0f172a;
+  --muted: rgba(15, 23, 42, 0.55);
+  --border: rgba(15, 23, 42, 0.12);
+  --surface: rgba(255, 255, 255, 0.75);
+  --surface-hover: rgba(255, 255, 255, 0.95);
+  --surface-elevated: rgba(255, 255, 255, 0.9);
+  --accent-start: #0ea5e9;
+  --accent-end: #4f46e5;
+  --accent-text: #ffffff;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.1), inset 0 1px rgba(255, 255, 255, 0.8);
+  --backdrop: rgba(15, 23, 42, 0.35);
+}
+
 *,
 *::before,
 *::after {

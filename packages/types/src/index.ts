@@ -71,6 +71,10 @@ export interface ConvertJobSpec extends PathsInput {
    * Çıktıda yalnızca ses (ör. mp3, wav, m4a). Video akışı yazılmaz (-vn).
    */
   audioOnlyOutput?: boolean;
+  /** İleri düzey kullanıcılar için çıktı yolundan önce eklenen serbest FFmpeg argümanları. */
+  extraFfmpegArgs?: string[];
+  /** Çıktı ses kanalı sayısı: 1 (mono), 2 (stereo). Belirtilmezse kaynak korunur. */
+  audioChannels?: 1 | 2;
 }
 
 /** ffprobe IPC özeti — renderer hedef listesini süzer. */

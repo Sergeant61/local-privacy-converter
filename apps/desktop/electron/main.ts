@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell, Tray } from "electron";
 
 import type { MediaProbeSummary } from "@lfc/types";
 import {
@@ -36,11 +36,140 @@ const READ_PREVIEW_CHANNEL = "lfc/media/read-preview";
 const GET_OUTPUT_DIR_CHANNEL = "lfc/media/get-output-dir";
 const SHOW_IN_FOLDER_CHANNEL = "lfc/shell/show-in-folder";
 const CANCEL_CONVERT_CHANNEL = "lfc/ffmpeg/cancel-convert";
+const AUDIO_MERGE_CHANNEL = "lfc/ffmpeg/audio-merge";
+const VIDEO_MERGE_CHANNEL = "lfc/ffmpeg/video-merge";
+const FRAME_EXTRACT_CHANNEL = "lfc/ffmpeg/frame-extract";
+const GIF_CONVERT_CHANNEL = "lfc/ffmpeg/gif-convert";
+const SETTINGS_GET_CHANNEL = "lfc/settings/get";
+const SETTINGS_SET_CHANNEL = "lfc/settings/set";
+const SUBTITLE_PROBE_CHANNEL = "lfc/ffmpeg/subtitle-probe";
+const SUBTITLE_EXTRACT_CHANNEL = "lfc/ffmpeg/subtitle-extract";
+const VIDEO_TRIM_CHANNEL = "lfc/ffmpeg/video-trim";
+const AUDIO_NORMALIZE_CHANNEL = "lfc/ffmpeg/audio-normalize";
+const WATERMARK_CHANNEL = "lfc/ffmpeg/watermark";
+const METADATA_READ_CHANNEL = "lfc/ffmpeg/metadata-read";
+const METADATA_WRITE_CHANNEL = "lfc/ffmpeg/metadata-write";
+const APNG_CONVERT_CHANNEL = "lfc/ffmpeg/apng-convert";
+const RUN_CONVERT_LOG_CHANNEL = "lfc/ffmpeg/convert-log";
+const PROFILES_GET_CHANNEL = "lfc/profiles/get";
+const PROFILES_SAVE_CHANNEL = "lfc/profiles/save";
+const PROFILES_DELETE_CHANNEL = "lfc/profiles/delete";
+const PDF_CONVERT_CHANNEL = "lfc/ffmpeg/pdf-convert";
+const CHECK_UPDATE_CHANNEL = "lfc/app/check-update";
 
 // Must be set before app.whenReady() so menu bar and dock show the correct name
 app.setName("Local Privacy Converter");
 
+interface LpcSettings {
+  outputDir?: string;
+  ffmpegBinary?: string;
+  defaultQuality?: "high" | "compatible" | "balanced" | "small" | "very_small";
+}
+
+let lpcSettings: LpcSettings = {};
+
+function settingsFilePath(): string {
+  return path.join(app.getPath("userData"), "lpc-settings.json");
+}
+
+function loadSettings(): void {
+  try {
+    const raw = fs.readFileSync(settingsFilePath(), "utf-8");
+    lpcSettings = JSON.parse(raw) as LpcSettings;
+  } catch {
+    lpcSettings = {};
+  }
+}
+
+function saveSettings(patch: Partial<LpcSettings>): void {
+  lpcSettings = { ...lpcSettings, ...patch };
+  try {
+    fs.writeFileSync(settingsFilePath(), JSON.stringify(lpcSettings, null, 2), "utf-8");
+  } catch {
+    /* ignore write errors */
+  }
+}
+
+// ── Kullanıcı profilleri ──────────────────────────────────────────────────────
+
+interface UserProfile {
+  id: string;
+  name: string;
+  targetProfileId: string;
+  qualityPreset?: string;
+  resolutionPreset?: string;
+  audioChannels?: number;
+  extraFfmpegArgs?: string;
+  createdAt: number;
+}
+
+function profilesFilePath(): string {
+  return path.join(app.getPath("userData"), "lpc-profiles.json");
+}
+
+function loadProfiles(): UserProfile[] {
+  try {
+    const raw = fs.readFileSync(profilesFilePath(), "utf-8");
+    return JSON.parse(raw) as UserProfile[];
+  } catch {
+    return [];
+  }
+}
+
+function writeProfiles(profiles: UserProfile[]): void {
+  try {
+    fs.writeFileSync(profilesFilePath(), JSON.stringify(profiles, null, 2), "utf-8");
+  } catch { /* ignore */ }
+}
+
 let currentConvertAbort: AbortController | null = null;
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+
+function setTaskbarProgress(progress: number | null) {
+  if (!mainWindow) return;
+  if (progress === null) {
+    mainWindow.setProgressBar(-1);
+  } else {
+    mainWindow.setProgressBar(progress / 100);
+  }
+}
+
+function createTray() {
+  const iconPath = path.join(__dirname, "..", "build-resources", "icon.png");
+  const fallbackIcon = path.join(app.getAppPath(), "build-resources", "icon.png");
+  const usedIcon = fs.existsSync(iconPath) ? iconPath : fallbackIcon;
+  try {
+    tray = new Tray(usedIcon);
+    tray.setToolTip("Local Privacy Converter");
+    updateTrayMenu("Hazır");
+    tray.on("double-click", () => {
+      mainWindow?.show();
+    });
+  } catch {
+    // Tray may not be supported on all platforms
+  }
+}
+
+function updateTrayMenu(statusLabel: string) {
+  if (!tray) return;
+  const menu = Menu.buildFromTemplate([
+    { label: "Local Privacy Converter", enabled: false },
+    { label: `Durum: ${statusLabel}`, enabled: false },
+    { type: "separator" },
+    { label: "Göster", click: () => { mainWindow?.show(); mainWindow?.focus(); } },
+    { label: "Gizle", click: () => { mainWindow?.hide(); } },
+    { type: "separator" },
+    { label: "Çıkış", click: () => { app.quit(); } },
+  ]);
+  tray.setContextMenu(menu);
+}
+
+function notifyCompletion(title: string, body: string): void {
+  if (Notification.isSupported()) {
+    new Notification({ title, body }).show();
+  }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -242,11 +371,22 @@ function wireIpcHandlers() {
         onProgress: (percent) => {
           if (event.sender.isDestroyed()) return;
           event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
+          setTaskbarProgress(percent);
+        },
+        onLog: (line) => {
+          if (event.sender.isDestroyed()) return;
+          event.sender.send(RUN_CONVERT_LOG_CHANNEL, { line });
         }
       });
       currentConvertAbort = null;
       if (run.ok) {
+        const outName = parsed.data.spec.outputPath.split(/[/\\]/).pop() ?? "dosya";
+        notifyCompletion("Dönüşüm Tamamlandı", outName);
         return { ok: true };
+      }
+
+      if (!ac.signal.aborted) {
+        notifyCompletion("Dönüşüm Başarısız", "Bir hata oluştu.");
       }
 
       return {
@@ -297,7 +437,9 @@ function wireIpcHandlers() {
     GET_OUTPUT_DIR_CHANNEL,
     async (): Promise<{ ok: true; dir: string } | { ok: false; message: string }> => {
       try {
-        const dir = path.join(app.getPath("documents"), "LPC");
+        const dir = lpcSettings.outputDir?.trim()
+          ? lpcSettings.outputDir.trim()
+          : path.join(app.getPath("documents"), "LPC");
         await fs.promises.mkdir(dir, { recursive: true });
         return { ok: true, dir };
       } catch (e) {
@@ -318,6 +460,930 @@ function wireIpcHandlers() {
   ipcMain.handle(CANCEL_CONVERT_CHANNEL, (): void => {
     currentConvertAbort?.abort();
   });
+
+  // --- Ayarlar ---
+  ipcMain.removeHandler(SETTINGS_GET_CHANNEL);
+  ipcMain.handle(SETTINGS_GET_CHANNEL, (): LpcSettings => {
+    return { ...lpcSettings };
+  });
+
+  ipcMain.removeHandler(SETTINGS_SET_CHANNEL);
+  ipcMain.handle(
+    SETTINGS_SET_CHANNEL,
+    async (
+      _event,
+      payload: unknown
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const p = payload as Partial<LpcSettings> & { pickOutputDir?: boolean };
+      if (p?.pickOutputDir) {
+        const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+        if (result.canceled || !result.filePaths[0]) {
+          return { ok: false, message: "İptal edildi." };
+        }
+        saveSettings({ outputDir: result.filePaths[0] });
+        return { ok: true };
+      }
+      const patch: Partial<LpcSettings> = {};
+      if (typeof p?.outputDir === "string") patch.outputDir = p.outputDir;
+      if (typeof p?.ffmpegBinary === "string") patch.ffmpegBinary = p.ffmpegBinary;
+      if (typeof p?.defaultQuality === "string") patch.defaultQuality = p.defaultQuality as LpcSettings["defaultQuality"];
+      saveSettings(patch);
+      return { ok: true };
+    }
+  );
+
+  // --- Kullanıcı Profilleri ---
+  ipcMain.removeHandler(PROFILES_GET_CHANNEL);
+  ipcMain.handle(PROFILES_GET_CHANNEL, (): UserProfile[] => {
+    return loadProfiles();
+  });
+
+  ipcMain.removeHandler(PROFILES_SAVE_CHANNEL);
+  ipcMain.handle(
+    PROFILES_SAVE_CHANNEL,
+    (_event, payload: unknown): { ok: true } | { ok: false; message: string } => {
+      const p = payload as Partial<UserProfile>;
+      if (typeof p?.name !== "string" || !p.name.trim()) {
+        return { ok: false, message: "Profil adı gerekli." };
+      }
+      if (typeof p?.targetProfileId !== "string" || !p.targetProfileId) {
+        return { ok: false, message: "Hedef profil gerekli." };
+      }
+      const profiles = loadProfiles();
+      const id = p.id ?? `profile-${Date.now()}`;
+      const existing = profiles.findIndex((pr) => pr.id === id);
+      const entry: UserProfile = {
+        id,
+        name: p.name.trim(),
+        targetProfileId: p.targetProfileId,
+        qualityPreset: typeof p.qualityPreset === "string" ? p.qualityPreset : undefined,
+        resolutionPreset: typeof p.resolutionPreset === "string" ? p.resolutionPreset : undefined,
+        audioChannels: typeof p.audioChannels === "number" ? p.audioChannels : undefined,
+        extraFfmpegArgs: typeof p.extraFfmpegArgs === "string" ? p.extraFfmpegArgs : undefined,
+        createdAt: existing >= 0 ? (profiles[existing]?.createdAt ?? Date.now()) : Date.now()
+      };
+      if (existing >= 0) {
+        profiles[existing] = entry;
+      } else {
+        profiles.push(entry);
+      }
+      writeProfiles(profiles);
+      return { ok: true };
+    }
+  );
+
+  ipcMain.removeHandler(PROFILES_DELETE_CHANNEL);
+  ipcMain.handle(
+    PROFILES_DELETE_CHANNEL,
+    (_event, payload: unknown): { ok: true } | { ok: false; message: string } => {
+      const id = (payload as { id?: unknown })?.id;
+      if (typeof id !== "string") return { ok: false, message: "ID gerekli." };
+      const profiles = loadProfiles().filter((p) => p.id !== id);
+      writeProfiles(profiles);
+      return { ok: true };
+    }
+  );
+
+  // --- Güncelleme Kontrolü ---
+  ipcMain.removeHandler(CHECK_UPDATE_CHANNEL);
+  ipcMain.handle(
+    CHECK_UPDATE_CHANNEL,
+    (): Promise<
+      | { ok: true; currentVersion: string; latestVersion: string; hasUpdate: boolean; releaseUrl: string }
+      | { ok: false; message: string }
+    > => {
+      const currentVersion = app.getVersion();
+      return new Promise((resolve) => {
+        const https = require("node:https") as typeof import("node:https");
+        const options = {
+          hostname: "api.github.com",
+          path: "/repos/recepozen/file-converter-api/releases/latest",
+          method: "GET",
+          headers: { "User-Agent": "LPC-App", Accept: "application/vnd.github.v3+json" }
+        };
+        const req = https.get(options, (res) => {
+          let body = "";
+          res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+          res.on("end", () => {
+            try {
+              const json = JSON.parse(body) as { tag_name?: string; html_url?: string };
+              const tag = json.tag_name?.replace(/^v/, "") ?? "";
+              if (!tag) {
+                resolve({ ok: false, message: "Sürüm etiketi alınamadı." });
+                return;
+              }
+              const hasUpdate = tag !== currentVersion;
+              resolve({
+                ok: true,
+                currentVersion,
+                latestVersion: tag,
+                hasUpdate,
+                releaseUrl: json.html_url ?? "https://github.com/recepozen/file-converter-api/releases"
+              });
+            } catch {
+              resolve({ ok: false, message: "GitHub API yanıtı ayrıştırılamadı." });
+            }
+          });
+        });
+        req.on("error", (err: Error) => {
+          resolve({ ok: false, message: `Ağ hatası: ${err.message}` });
+        });
+        req.setTimeout(8000, () => {
+          req.destroy();
+          resolve({ ok: false, message: "Bağlantı zaman aşımı." });
+        });
+      });
+    }
+  );
+
+  // --- PDF → Görüntü ---
+  ipcMain.removeHandler(PDF_CONVERT_CHANNEL);
+  ipcMain.handle(
+    PDF_CONVERT_CHANNEL,
+    async (
+      _event,
+      payload: unknown
+    ): Promise<{ ok: true; outputDir: string } | { ok: false; message: string }> => {
+      const p = payload as { inputPath?: unknown; format?: unknown; dpi?: unknown };
+      const inputPath = p?.inputPath;
+      const format = typeof p?.format === "string" ? p.format : "png";
+      const dpi = typeof p?.dpi === "number" && p.dpi > 0 ? p.dpi : 150;
+
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "PDF dosyası gerekli." };
+      }
+
+      // Determine output directory: same as input, with subdir
+      const inputDir = path.dirname(inputPath);
+      const inputBase = path.basename(inputPath, ".pdf");
+      const outputDir = path.join(inputDir, `${inputBase}-sayfalar`);
+
+      try {
+        fs.mkdirSync(outputDir, { recursive: true });
+      } catch {
+        return { ok: false, message: "Çıktı klasörü oluşturulamadı." };
+      }
+
+      const outputPrefix = path.join(outputDir, "sayfa");
+
+      return await new Promise((resolve) => {
+        // Try pdftoppm (poppler-utils)
+        const { spawn } = require("node:child_process") as typeof import("node:child_process");
+        const args = [
+          "-r", String(dpi),
+          `-${format}`,
+          inputPath,
+          outputPrefix
+        ];
+        const proc = spawn("pdftoppm", args, { shell: false, stdio: ["ignore", "pipe", "pipe"] });
+        let errText = "";
+        proc.stderr?.on("data", (chunk: Buffer) => { errText += chunk.toString(); });
+        proc.on("error", (err: NodeJS.ErrnoException) => {
+          if (err.code === "ENOENT") {
+            resolve({ ok: false, message: "pdftoppm bulunamadı. Poppler'ı yükleyin: `brew install poppler` (macOS) veya `apt install poppler-utils` (Linux)." });
+          } else {
+            resolve({ ok: false, message: err.message });
+          }
+        });
+        proc.on("close", (code) => {
+          if (code === 0) {
+            resolve({ ok: true, outputDir });
+          } else {
+            resolve({ ok: false, message: errText.trim() || `pdftoppm çıkış kodu: ${code}` });
+          }
+        });
+      });
+    }
+  );
+
+  // --- Ses Birleştirme (Audio Merge) ---
+  ipcMain.removeHandler(AUDIO_MERGE_CHANNEL);
+  ipcMain.handle(
+    AUDIO_MERGE_CHANNEL,
+    async (
+      event,
+      payload: unknown
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const p = payload as {
+        inputPaths?: unknown;
+        outputPath?: unknown;
+        mode?: unknown;
+        outputEncoder?: unknown;
+      };
+      const inputPaths = p?.inputPaths;
+      const outputPath = p?.outputPath;
+      const mode = (p?.mode as string) ?? "concat";
+      const encoder = (p?.outputEncoder as string) ?? "libmp3lame";
+
+      if (!Array.isArray(inputPaths) || inputPaths.length < 2) {
+        return { ok: false, message: "En az 2 ses dosyası gerekli." };
+      }
+      if (typeof outputPath !== "string" || !outputPath) {
+        return { ok: false, message: "Çıktı yolu gerekli." };
+      }
+
+      let executable: string;
+      try {
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+
+      const inputs: string[] = [];
+      for (const p of inputPaths as string[]) {
+        inputs.push("-i", p);
+      }
+
+      let filterArgs: string[];
+      const n = (inputPaths as string[]).length;
+      if (mode === "mix") {
+        const inLabels = Array.from({ length: n }, (_, i) => `[${i}:a]`).join("");
+        filterArgs = [
+          "-filter_complex",
+          `${inLabels}amix=inputs=${n}:duration=longest:dropout_transition=2[a]`,
+          "-map", "[a]"
+        ];
+      } else {
+        const inLabels = Array.from({ length: n }, (_, i) => `[${i}:a]`).join("");
+        filterArgs = [
+          "-filter_complex",
+          `${inLabels}concat=n=${n}:v=0:a=1[a]`,
+          "-map", "[a]"
+        ];
+      }
+
+      const args = [...inputs, ...filterArgs, "-c:a", encoder, "-y", outputPath];
+      const ac = new AbortController();
+      currentConvertAbort = ac;
+      updateTrayMenu("Dönüştürülüyor…");
+      const run = await runFfmpegJob(executable, args, {
+        signal: ac.signal,
+        onProgress: (percent) => {
+          if (event.sender.isDestroyed()) return;
+          event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
+          setTaskbarProgress(percent);
+        }
+      });
+      currentConvertAbort = null;
+      setTaskbarProgress(null);
+      if (run.ok) {
+        updateTrayMenu("Hazır");
+        notifyCompletion("Ses Birleştirme Tamamlandı", "Dosyalar başarıyla birleştirildi.");
+        return { ok: true };
+      }
+      return { ok: false, message: ac.signal.aborted ? "İptal edildi." : run.stderr };
+    }
+  );
+
+  // --- Video Birleştirme (Video Merge) ---
+  ipcMain.removeHandler(VIDEO_MERGE_CHANNEL);
+  ipcMain.handle(
+    VIDEO_MERGE_CHANNEL,
+    async (
+      event,
+      payload: unknown
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const p = payload as { inputPaths?: unknown; outputPath?: unknown };
+      const inputPaths = p?.inputPaths;
+      const outputPath = p?.outputPath;
+
+      if (!Array.isArray(inputPaths) || inputPaths.length < 2) {
+        return { ok: false, message: "En az 2 video dosyası gerekli." };
+      }
+      if (typeof outputPath !== "string" || !outputPath) {
+        return { ok: false, message: "Çıktı yolu gerekli." };
+      }
+
+      let executable: string;
+      try {
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+
+      // concat demuxer için geçici liste dosyası
+      const listPath = outputPath + ".concat-list.txt";
+      const listContent = (inputPaths as string[])
+        .map((p) => `file '${p.replace(/'/g, "'\\''")}'`)
+        .join("\n");
+      await fs.promises.writeFile(listPath, listContent, "utf8");
+
+      const args = [
+        "-f", "concat", "-safe", "0",
+        "-i", listPath,
+        "-c", "copy",
+        "-y", outputPath
+      ];
+      const ac = new AbortController();
+      currentConvertAbort = ac;
+      updateTrayMenu("Dönüştürülüyor…");
+      const run = await runFfmpegJob(executable, args, {
+        signal: ac.signal,
+        onProgress: (percent) => {
+          if (event.sender.isDestroyed()) return;
+          event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
+          setTaskbarProgress(percent);
+        }
+      });
+      currentConvertAbort = null;
+      fs.promises.unlink(listPath).catch(() => undefined);
+      if (run.ok) {
+        notifyCompletion("Video Birleştirme Tamamlandı", "Dosyalar başarıyla birleştirildi.");
+        return { ok: true };
+      }
+      return { ok: false, message: ac.signal.aborted ? "İptal edildi." : run.stderr };
+    }
+  );
+
+  // --- Kare Çıkarma (Frame Extraction) ---
+  ipcMain.removeHandler(FRAME_EXTRACT_CHANNEL);
+  ipcMain.handle(
+    FRAME_EXTRACT_CHANNEL,
+    async (
+      event,
+      payload: unknown
+    ): Promise<{ ok: true; outputDir: string } | { ok: false; message: string }> => {
+      const p = payload as {
+        inputPath?: unknown;
+        outputDir?: unknown;
+        intervalSec?: unknown;
+        format?: unknown;
+      };
+      const inputPath = p?.inputPath;
+      const outputDir = p?.outputDir;
+      const intervalSec = typeof p?.intervalSec === "number" ? p.intervalSec : 1;
+      const format = (p?.format as string) ?? "png";
+
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "Giriş dosyası gerekli." };
+      }
+      if (typeof outputDir !== "string" || !outputDir) {
+        return { ok: false, message: "Çıktı klasörü gerekli." };
+      }
+
+      let executable: string;
+      try {
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+
+      await fs.promises.mkdir(outputDir, { recursive: true });
+      const outputPattern = path.join(outputDir, `frame-%04d.${format}`);
+      const args = [
+        "-i", inputPath,
+        "-vf", `fps=1/${intervalSec}`,
+        "-q:v", "2",
+        "-y", outputPattern
+      ];
+      const ac = new AbortController();
+      currentConvertAbort = ac;
+      updateTrayMenu("Dönüştürülüyor…");
+      const run = await runFfmpegJob(executable, args, {
+        signal: ac.signal,
+        onProgress: (percent) => {
+          if (event.sender.isDestroyed()) return;
+          event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
+          setTaskbarProgress(percent);
+        }
+      });
+      currentConvertAbort = null;
+      setTaskbarProgress(null);
+      if (run.ok) {
+        updateTrayMenu("Hazır");
+        notifyCompletion("Kare Çıkarma Tamamlandı", `${outputDir.split(/[/\\]/).pop()} klasörüne kaydedildi.`);
+        return { ok: true, outputDir };
+      }
+      return { ok: false, message: ac.signal.aborted ? "İptal edildi." : run.stderr };
+    }
+  );
+
+  // --- GIF Dönüştürme (palettegen + paletteuse) ---
+  ipcMain.removeHandler(GIF_CONVERT_CHANNEL);
+  ipcMain.handle(
+    GIF_CONVERT_CHANNEL,
+    async (
+      event,
+      payload: unknown
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const p = payload as {
+        inputPath?: unknown;
+        outputPath?: unknown;
+        fps?: unknown;
+        width?: unknown;
+        loop?: unknown;
+      };
+      const inputPath = p?.inputPath;
+      const outputPath = p?.outputPath;
+      const fps = typeof p?.fps === "number" && p.fps > 0 ? p.fps : 10;
+      const width = typeof p?.width === "number" && p.width > 0 ? p.width : 480;
+      const loop = typeof p?.loop === "number" ? p.loop : 0;
+
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "Giriş dosyası gerekli." };
+      }
+      if (typeof outputPath !== "string" || !outputPath) {
+        return { ok: false, message: "Çıktı dosyası gerekli." };
+      }
+
+      let executable: string;
+      try {
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+
+      const filterComplex = [
+        `[0:v]fps=${fps},scale=${width}:-1:flags=lanczos,split[s0][s1]`,
+        `[s0]palettegen=max_colors=256:stats_mode=diff[p]`,
+        `[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`
+      ].join(";");
+
+      const args = [
+        "-i", inputPath,
+        "-filter_complex", filterComplex,
+        "-loop", String(loop),
+        "-y", outputPath
+      ];
+
+      const ac = new AbortController();
+      currentConvertAbort = ac;
+      updateTrayMenu("Dönüştürülüyor…");
+      const run = await runFfmpegJob(executable, args, {
+        signal: ac.signal,
+        onProgress: (percent) => {
+          if (event.sender.isDestroyed()) return;
+          event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
+          setTaskbarProgress(percent);
+        }
+      });
+      currentConvertAbort = null;
+      setTaskbarProgress(null);
+      if (run.ok) {
+        updateTrayMenu("Hazır");
+        notifyCompletion("GIF Oluşturuldu", "GIF dosyası kaydedildi.");
+        return { ok: true };
+      }
+      return { ok: false, message: ac.signal.aborted ? "İptal edildi." : run.stderr };
+    }
+  );
+
+  // --- APNG Dönüştürme ---
+  ipcMain.removeHandler(APNG_CONVERT_CHANNEL);
+  ipcMain.handle(
+    APNG_CONVERT_CHANNEL,
+    async (
+      event,
+      payload: unknown
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const p = payload as {
+        inputPath?: unknown;
+        outputPath?: unknown;
+        fps?: unknown;
+        width?: unknown;
+        plays?: unknown;
+      };
+      const inputPath = p?.inputPath;
+      const outputPath = p?.outputPath;
+      const fps = typeof p?.fps === "number" && p.fps > 0 ? p.fps : 15;
+      const width = typeof p?.width === "number" && p.width > 0 ? p.width : 480;
+      const plays = typeof p?.plays === "number" ? p.plays : 0;
+
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "Giriş dosyası gerekli." };
+      }
+      if (typeof outputPath !== "string" || !outputPath) {
+        return { ok: false, message: "Çıktı dosyası gerekli." };
+      }
+
+      let executable: string;
+      try {
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+
+      const vf = `fps=${fps},scale=${width}:-1:flags=lanczos`;
+      const args = [
+        "-i", inputPath,
+        "-vf", vf,
+        "-f", "apng",
+        "-plays", String(plays),
+        "-y", outputPath
+      ];
+
+      const ac = new AbortController();
+      currentConvertAbort = ac;
+      updateTrayMenu("Dönüştürülüyor…");
+      const run = await runFfmpegJob(executable, args, {
+        signal: ac.signal,
+        onProgress: (percent) => {
+          if (event.sender.isDestroyed()) return;
+          event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
+          setTaskbarProgress(percent);
+        }
+      });
+      currentConvertAbort = null;
+      setTaskbarProgress(null);
+      if (run.ok) {
+        updateTrayMenu("Hazır");
+        notifyCompletion("APNG Oluşturuldu", "APNG dosyası kaydedildi.");
+        return { ok: true };
+      }
+      return { ok: false, message: ac.signal.aborted ? "İptal edildi." : run.stderr };
+    }
+  );
+
+  // --- Altyazı Akışı Tespit ---
+  ipcMain.removeHandler(SUBTITLE_PROBE_CHANNEL);
+  ipcMain.handle(
+    SUBTITLE_PROBE_CHANNEL,
+    async (
+      _event,
+      payload: unknown
+    ): Promise<
+      | { ok: true; streams: { index: number; codecName: string; title: string; language: string }[] }
+      | { ok: false; message: string }
+    > => {
+      const inputPath = (payload as { inputPath?: unknown })?.inputPath;
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "Giriş dosyası gerekli." };
+      }
+      let ffprobeExec: string;
+      try {
+        ffprobeExec = resolveFfprobeExecutable(undefined);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+      const result = await runFfprobeJson(ffprobeExec, inputPath);
+      if (!result.ok) return { ok: false, message: result.message };
+      const streams = (result.json.streams ?? [])
+        .map((s, i) => ({ ...s, globalIndex: i }))
+        .filter((s) => s.codec_type === "subtitle")
+        .map((s) => ({
+          index: s.globalIndex,
+          codecName: s.codec_name ?? "unknown",
+          title: (s as Record<string, unknown>)["tags"]
+            ? String(((s as Record<string, unknown>)["tags"] as Record<string, unknown>)?.["title"] ?? "")
+            : "",
+          language: (s as Record<string, unknown>)["tags"]
+            ? String(((s as Record<string, unknown>)["tags"] as Record<string, unknown>)?.["language"] ?? "")
+            : ""
+        }));
+      return { ok: true, streams };
+    }
+  );
+
+  // --- Altyazı Akışı Çıkarma ---
+  ipcMain.removeHandler(SUBTITLE_EXTRACT_CHANNEL);
+  ipcMain.handle(
+    SUBTITLE_EXTRACT_CHANNEL,
+    async (
+      _event,
+      payload: unknown
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const p = payload as { inputPath?: unknown; streamIndex?: unknown; outputPath?: unknown; format?: unknown };
+      const inputPath = p?.inputPath;
+      const streamIndex = typeof p?.streamIndex === "number" ? p.streamIndex : 0;
+      const outputPath = p?.outputPath;
+
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "Giriş dosyası gerekli." };
+      }
+      if (typeof outputPath !== "string" || !outputPath) {
+        return { ok: false, message: "Çıktı dosyası gerekli." };
+      }
+
+      let executable: string;
+      try {
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+
+      const args = [
+        "-i", inputPath,
+        "-map", `0:${streamIndex}`,
+        "-c:s", "copy",
+        "-y", outputPath
+      ];
+
+      const result = await runFfmpegJob(executable, args, {});
+      if (result.ok) return { ok: true };
+      return { ok: false, message: result.stderr };
+    }
+  );
+
+  // --- Video Trim ---
+  ipcMain.removeHandler(VIDEO_TRIM_CHANNEL);
+  ipcMain.handle(
+    VIDEO_TRIM_CHANNEL,
+    async (
+      event,
+      payload: unknown
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const p = payload as {
+        inputPath?: unknown;
+        outputPath?: unknown;
+        startSec?: unknown;
+        endSec?: unknown;
+        streamCopy?: unknown;
+      };
+      const inputPath = p?.inputPath;
+      const outputPath = p?.outputPath;
+      const startSec = typeof p?.startSec === "number" ? p.startSec : 0;
+      const endSec = typeof p?.endSec === "number" ? p.endSec : null;
+      const streamCopy = p?.streamCopy !== false;
+
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "Giriş dosyası gerekli." };
+      }
+      if (typeof outputPath !== "string" || !outputPath) {
+        return { ok: false, message: "Çıktı dosyası gerekli." };
+      }
+
+      let executable: string;
+      try {
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+
+      const args: string[] = [];
+      if (startSec > 0) args.push("-ss", String(startSec));
+      args.push("-i", inputPath);
+      if (endSec !== null) args.push("-to", String(endSec));
+      if (streamCopy) {
+        args.push("-c", "copy");
+      }
+      args.push("-y", outputPath);
+
+      const ac = new AbortController();
+      currentConvertAbort = ac;
+      updateTrayMenu("Dönüştürülüyor…");
+      const run = await runFfmpegJob(executable, args, {
+        signal: ac.signal,
+        onProgress: (percent) => {
+          if (event.sender.isDestroyed()) return;
+          event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
+          setTaskbarProgress(percent);
+        }
+      });
+      currentConvertAbort = null;
+      setTaskbarProgress(null);
+      if (run.ok) {
+        updateTrayMenu("Hazır");
+        notifyCompletion("Video Kırpma Tamamlandı", `${String(outputPath).split(/[/\\]/).pop()} kaydedildi.`);
+        return { ok: true };
+      }
+      return { ok: false, message: ac.signal.aborted ? "İptal edildi." : run.stderr };
+    }
+  );
+
+  // --- Ses Normalizasyonu (EBU R128 loudnorm) ---
+  ipcMain.removeHandler(AUDIO_NORMALIZE_CHANNEL);
+  ipcMain.handle(
+    AUDIO_NORMALIZE_CHANNEL,
+    async (
+      event,
+      payload: unknown
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const p = payload as {
+        inputPath?: unknown;
+        outputPath?: unknown;
+        targetLufs?: unknown;
+        truePeak?: unknown;
+        lra?: unknown;
+      };
+      const inputPath = p?.inputPath;
+      const outputPath = p?.outputPath;
+      const targetLufs = typeof p?.targetLufs === "number" ? p.targetLufs : -14;
+      const truePeak = typeof p?.truePeak === "number" ? p.truePeak : -1;
+      const lra = typeof p?.lra === "number" ? p.lra : 11;
+
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "Giriş dosyası gerekli." };
+      }
+      if (typeof outputPath !== "string" || !outputPath) {
+        return { ok: false, message: "Çıktı dosyası gerekli." };
+      }
+
+      let executable: string;
+      try {
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+
+      const loudnorm = `loudnorm=I=${targetLufs}:TP=${truePeak}:LRA=${lra}:print_format=none`;
+      const args = [
+        "-i", inputPath,
+        "-af", loudnorm,
+        "-y", outputPath
+      ];
+
+      const ac = new AbortController();
+      currentConvertAbort = ac;
+      updateTrayMenu("Dönüştürülüyor…");
+      const run = await runFfmpegJob(executable, args, {
+        signal: ac.signal,
+        onProgress: (percent) => {
+          if (event.sender.isDestroyed()) return;
+          event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
+          setTaskbarProgress(percent);
+        }
+      });
+      currentConvertAbort = null;
+      setTaskbarProgress(null);
+      if (run.ok) {
+        updateTrayMenu("Hazır");
+        notifyCompletion("Ses Normalizasyonu Tamamlandı", `${String(outputPath).split(/[/\\]/).pop()} kaydedildi.`);
+        return { ok: true };
+      }
+      return { ok: false, message: ac.signal.aborted ? "İptal edildi." : run.stderr };
+    }
+  );
+
+  // --- Filigran (Watermark) ---
+  ipcMain.removeHandler(WATERMARK_CHANNEL);
+  ipcMain.handle(
+    WATERMARK_CHANNEL,
+    async (
+      event,
+      payload: unknown
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const p = payload as {
+        inputPath?: unknown;
+        outputPath?: unknown;
+        mode?: unknown;
+        text?: unknown;
+        imagePath?: unknown;
+        position?: unknown;
+        opacity?: unknown;
+        fontSize?: unknown;
+        fontColor?: unknown;
+      };
+      const inputPath = p?.inputPath;
+      const outputPath = p?.outputPath;
+      const mode = String(p?.mode ?? "text");
+      const text = String(p?.text ?? "Filigran");
+      const imagePath = p?.imagePath;
+      const position = String(p?.position ?? "bottomright");
+      const opacity = typeof p?.opacity === "number" ? Math.min(1, Math.max(0, p.opacity)) : 0.5;
+      const fontSize = typeof p?.fontSize === "number" ? p.fontSize : 36;
+      const fontColor = String(p?.fontColor ?? "white");
+
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "Giriş dosyası gerekli." };
+      }
+      if (typeof outputPath !== "string" || !outputPath) {
+        return { ok: false, message: "Çıktı dosyası gerekli." };
+      }
+
+      let executable: string;
+      try {
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+
+      // Position mapping to FFmpeg overlay expressions
+      const posMap: Record<string, string> = {
+        topleft:     "10:10",
+        topright:    "W-w-10:10",
+        bottomleft:  "10:H-h-10",
+        bottomright: "W-w-10:H-h-10",
+        center:      "(W-w)/2:(H-h)/2",
+      };
+      const overlayPos = posMap[position] ?? posMap["bottomright"]!;
+
+      let args: string[];
+      if (mode === "image" && typeof imagePath === "string" && imagePath) {
+        args = [
+          "-i", inputPath,
+          "-i", imagePath,
+          "-filter_complex",
+          `[1:v]format=rgba,colorchannelmixer=aa=${opacity}[wm];[0:v][wm]overlay=${overlayPos}`,
+          "-codec:a", "copy",
+          "-y", outputPath
+        ];
+      } else {
+        const drawtext = [
+          `text='${text.replace(/'/g, "\\'")}'`,
+          `fontsize=${fontSize}`,
+          `fontcolor=${fontColor}@${opacity}`,
+          `x=${overlayPos.split(":")[0]}`,
+          `y=${overlayPos.split(":")[1]}`,
+          "shadowx=1",
+          "shadowy=1",
+          "shadowcolor=black@0.5",
+        ].join(":");
+        args = [
+          "-i", inputPath,
+          "-vf", `drawtext=${drawtext}`,
+          "-codec:a", "copy",
+          "-y", outputPath
+        ];
+      }
+
+      const ac = new AbortController();
+      currentConvertAbort = ac;
+      updateTrayMenu("Dönüştürülüyor…");
+      const run = await runFfmpegJob(executable, args, {
+        signal: ac.signal,
+        onProgress: (percent) => {
+          if (event.sender.isDestroyed()) return;
+          event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
+          setTaskbarProgress(percent);
+        }
+      });
+      currentConvertAbort = null;
+      setTaskbarProgress(null);
+      if (run.ok) {
+        updateTrayMenu("Hazır");
+        notifyCompletion("Filigran Eklendi", `${String(outputPath).split(/[/\\]/).pop()} kaydedildi.`);
+        return { ok: true };
+      }
+      return { ok: false, message: ac.signal.aborted ? "İptal edildi." : run.stderr };
+    }
+  );
+
+  // --- Metadata Okuma ---
+  ipcMain.removeHandler(METADATA_READ_CHANNEL);
+  ipcMain.handle(
+    METADATA_READ_CHANNEL,
+    async (
+      _event,
+      payload: unknown
+    ): Promise<{ ok: true; tags: Record<string, string> } | { ok: false; message: string }> => {
+      const p = payload as { inputPath?: unknown };
+      const inputPath = p?.inputPath;
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "Giriş dosyası gerekli." };
+      }
+      let ffprobeExec: string;
+      try {
+        ffprobeExec = resolveFfprobeExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+      const result = await runFfprobeJson(ffprobeExec, inputPath);
+      if (!result.ok) return { ok: false, message: result.stderr };
+      const tags: Record<string, string> = {};
+      const formatTags = (result.json as { format?: { tags?: Record<string, string> } }).format?.tags ?? {};
+      for (const [k, v] of Object.entries(formatTags)) {
+        tags[k.toLowerCase()] = String(v);
+      }
+      return { ok: true, tags };
+    }
+  );
+
+  // --- Metadata Yazma ---
+  ipcMain.removeHandler(METADATA_WRITE_CHANNEL);
+  ipcMain.handle(
+    METADATA_WRITE_CHANNEL,
+    async (
+      _event,
+      payload: unknown
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const p = payload as { inputPath?: unknown; outputPath?: unknown; tags?: unknown };
+      const inputPath = p?.inputPath;
+      const outputPath = p?.outputPath;
+      const tags = p?.tags;
+
+      if (typeof inputPath !== "string" || !inputPath) {
+        return { ok: false, message: "Giriş dosyası gerekli." };
+      }
+      if (typeof outputPath !== "string" || !outputPath) {
+        return { ok: false, message: "Çıktı dosyası gerekli." };
+      }
+      if (typeof tags !== "object" || tags === null) {
+        return { ok: false, message: "Etiketler gerekli." };
+      }
+
+      let executable: string;
+      try {
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+
+      const args = ["-i", inputPath];
+      for (const [k, v] of Object.entries(tags as Record<string, string>)) {
+        if (typeof v === "string") {
+          args.push("-metadata", `${k}=${v}`);
+        }
+      }
+      args.push("-c", "copy", "-y", outputPath);
+
+      const result = await runFfmpegJob(executable, args, {});
+      if (result.ok) {
+        notifyCompletion("Metadata Güncellendi", `${String(outputPath).split(/[/\\]/).pop()} kaydedildi.`);
+        return { ok: true };
+      }
+      return { ok: false, message: result.stderr };
+    }
+  );
 }
 
 async function createWindow(): Promise<void> {
@@ -337,6 +1403,7 @@ async function createWindow(): Promise<void> {
     }
   });
 
+  mainWindow = window;
   window.once("ready-to-show", () => window.show());
 
   if (devUrl.length > 0) {
@@ -351,8 +1418,10 @@ async function createWindow(): Promise<void> {
 
 async function bootstrap(): Promise<void> {
   await app.whenReady();
+  loadSettings();
   wireIpcHandlers();
   await createWindow();
+  createTray();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

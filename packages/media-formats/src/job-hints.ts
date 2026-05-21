@@ -24,6 +24,22 @@ export function targetProfileToJobHints(id: TargetProfileId): ConvertJobHints {
         audioEncoder: "aac",
         outputContainer: "mp4"
       };
+    case "mp4-h265-aac":
+      return {
+        mode: "transcode",
+        audioOnlyOutput: false,
+        videoEncoder: "libx265",
+        audioEncoder: "aac",
+        outputContainer: "mp4"
+      };
+    case "mp4-av1-aac":
+      return {
+        mode: "transcode",
+        audioOnlyOutput: false,
+        videoEncoder: "libsvtav1",
+        audioEncoder: "aac",
+        outputContainer: "mp4"
+      };
     case "webm-vp9-opus":
       return {
         mode: "transcode",
@@ -103,12 +119,26 @@ export function targetProfileToJobHints(id: TargetProfileId): ConvertJobHints {
         outputContainer: "webp"
       };
 
+    case "image-avif":
+      return {
+        mode: "transcode",
+        audioOnlyOutput: false,
+        videoEncoder: "libsvtav1",
+        outputContainer: "avif"
+      };
+
     // ── Sosyal medya presetleri ───────────────────────────────────────────────
     case "social-wp-video":
     case "social-ig-feed":
     case "social-ig-stories":
     case "social-msg-video":
     case "social-tg-video":
+    case "social-yt-1080":
+    case "social-yt-4k":
+    case "social-tt-video":
+    case "social-li-video":
+    case "social-x-video":
+    case "social-dc-video":
       return {
         mode: "transcode",
         audioOnlyOutput: false,

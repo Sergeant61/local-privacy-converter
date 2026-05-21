@@ -40,14 +40,75 @@
   let customAspectRatio = $state("16:9");
   let overrideVideoEncoder = $state<VideoEncoderChoice | "">("");
   let targetSizeMb = $state<number | null>(null);
+  let extraFfmpegArgsRaw = $state("");
+  let audioChannels = $state<"" | "1" | "2">("");
   let isDragging = $state(false);
+
+  // ── Profil yönetimi ──────────────────────────────────────────────────────
+  type UserProfile = {
+    id: string;
+    name: string;
+    targetProfileId: string;
+    qualityPreset?: string;
+    resolutionPreset?: string;
+    audioChannels?: number;
+    extraFfmpegArgs?: string;
+    createdAt: number;
+  };
+  let profiles = $state<UserProfile[]>([]);
+  let profileSaveName = $state("");
+  let showProfileSave = $state(false);
+
+  async function loadProfilesList() {
+    if (!hasLfc) return;
+    try {
+      profiles = await window.lfc.getProfiles();
+    } catch { profiles = []; }
+  }
+
+  async function applyProfile(p: UserProfile) {
+    targetProfileId = p.targetProfileId as typeof targetProfileId;
+    if (p.qualityPreset) qualityPreset = p.qualityPreset as typeof qualityPreset;
+    if (p.resolutionPreset) resolutionPreset = p.resolutionPreset as typeof resolutionPreset;
+    if (p.audioChannels != null) audioChannels = String(p.audioChannels) as "" | "1" | "2";
+    if (p.extraFfmpegArgs != null) extraFfmpegArgsRaw = p.extraFfmpegArgs;
+  }
+
+  async function saveCurrentProfile() {
+    if (!hasLfc || !profileSaveName.trim()) return;
+    const r = await window.lfc.saveProfile({
+      name: profileSaveName.trim(),
+      targetProfileId,
+      qualityPreset,
+      resolutionPreset,
+      audioChannels: audioChannels !== "" ? Number(audioChannels) : undefined,
+      extraFfmpegArgs: extraFfmpegArgsRaw || undefined
+    });
+    if (r.ok) {
+      profileSaveName = "";
+      showProfileSave = false;
+      await loadProfilesList();
+    }
+  }
+
+  async function deleteProfile(id: string) {
+    if (!hasLfc) return;
+    await window.lfc.deleteProfile(id);
+    await loadProfilesList();
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   let convertBusy = $state(false);
+  let convertLog = $state<string[]>([]);
   let convertCancelled = $state(false);
   /** Dönüşüm yüzdesi (0–100); süre yoksa veya boşta `null`. */
   let convertProgress = $state<number | null>(null);
   let convertToast = $state<string | null>(null);
 
   let inputPreviewUrl = $state<string | null>(null);
+  let videoPreviewUrl = $state<string | null>(null);
+  let waveformPath = $state<string | null>(null);
+  let waveformCanvas = $state<HTMLCanvasElement | null>(null);
   let outputPath = $state<string | null>(null);
   let outputPreviewUrl = $state<string | null>(null);
 
@@ -140,26 +201,31 @@
     if (best) overrideVideoEncoder = best;
   }
 
-  onMount(async () => {
-    if (!hasLfc) {
-      capsLoading = false;
-      return;
-    }
-    const [v, c] = await Promise.all([
-      window.lfc.getFfmpegVersion(),
-      window.lfc.getFfmpegCapabilities()
-    ]);
-    if (v.ok) {
-      ffmpegVersion = v.versionLine;
-    }
-    if (c.ok === false) {
-      capsError = c.message;
+  onMount(() => {
+    const openHandler = () => { void onNativePick(); };
+    window.addEventListener("lfc:open-file", openHandler);
+
+    if (hasLfc) {
+      void loadProfilesList();
+      Promise.all([
+        window.lfc.getFfmpegVersion(),
+        window.lfc.getFfmpegCapabilities()
+      ]).then(([v, c]) => {
+        if (v.ok) ffmpegVersion = v.versionLine;
+        if (c.ok === false) {
+          capsError = c.message;
+        } else {
+          encoderSet = new Set(c.value.encoders);
+          hwaccels = c.value.hwaccels;
+        }
+        capsLoading = false;
+        if (probeSummary) autoSelectGpuEncoder();
+      });
     } else {
-      encoderSet = new Set(c.value.encoders);
-      hwaccels = c.value.hwaccels;
+      capsLoading = false;
     }
-    capsLoading = false;
-    if (probeSummary) autoSelectGpuEncoder();
+
+    return () => window.removeEventListener("lfc:open-file", openHandler);
   });
 
   function resolutionHints(): { width?: number } {
@@ -178,6 +244,8 @@
     probeError = null;
     probeSummary = null;
     inputPreviewUrl = null;
+    videoPreviewUrl = null;
+    waveformPath = null;
     if (!hasLfc) {
       probeError = "Bu ekran yalnızca masaüstü (Electron) ortamında tam çalışır.";
       return;
@@ -203,6 +271,55 @@
       if (prev.ok) {
         inputPreviewUrl = prev.dataUrl;
       }
+    } else if (kind === "video") {
+      videoPreviewUrl = `file://${path.replace(/\\/g, "/")}`;
+    } else if (kind === "audio") {
+      waveformPath = path;
+    }
+  }
+
+  $effect(() => {
+    const canvas = waveformCanvas;
+    const path = waveformPath;
+    if (!canvas || !path) return;
+    void renderWaveform(canvas, path);
+  });
+
+  async function renderWaveform(canvas: HTMLCanvasElement, path: string) {
+    try {
+      const url = `file://${path.replace(/\\/g, "/")}`;
+      const resp = await fetch(url);
+      const buffer = await resp.arrayBuffer();
+      const audioCtx = new AudioContext();
+      const decoded = await audioCtx.decodeAudioData(buffer);
+      await audioCtx.close();
+      const data = decoded.getChannelData(0);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const W = canvas.width;
+      const H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      const step = Math.max(1, Math.floor(data.length / W));
+      ctx.fillStyle = "rgba(56,189,248,0.1)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = "rgba(56,189,248,0.85)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 0; x < W; x++) {
+        let min = 1, max = -1;
+        for (let j = 0; j < step; j++) {
+          const v = data[x * step + j] ?? 0;
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+        const y1 = ((1 - max) / 2) * H;
+        const y2 = ((1 - min) / 2) * H;
+        ctx.moveTo(x, y1);
+        ctx.lineTo(x, Math.max(y2, y1 + 1));
+      }
+      ctx.stroke();
+    } catch {
+      // silently skip if audio cannot be decoded
     }
   }
 
@@ -300,6 +417,11 @@
           ? (customAspectRatio.trim() || undefined)
           : aspectRatioPreset;
 
+    const extraTokens = extraFfmpegArgsRaw
+      .trim()
+      .split(/\s+/)
+      .filter((t) => t.length > 0);
+
     return {
       inputPath: filePath,
       outputPath: outPath,
@@ -312,7 +434,9 @@
         ...(effectiveSizeMb ? { targetSizeMb: effectiveSizeMb } : {}),
         ...(effectiveAspectRatio ? { aspectRatio: effectiveAspectRatio } : {}),
         ...res
-      }
+      },
+      ...(extraTokens.length > 0 ? { extraFfmpegArgs: extraTokens } : {}),
+      ...(audioChannels !== "" ? { audioChannels: Number(audioChannels) as 1 | 2 } : {})
     };
   }
 
@@ -342,6 +466,7 @@
       convertBusy = true;
       outputPath = null;
       outputPreviewUrl = null;
+      convertLog = [];
       const durRaw = probeSummary?.durationSec;
       const dur =
         durRaw != null && typeof durRaw === "number" && Number.isFinite(durRaw) ? durRaw : NaN;
@@ -352,6 +477,9 @@
         hasDuration ? { spec, inputDurationSec: dur } : { spec },
         (percent) => {
           convertProgress = percent;
+        },
+        (line) => {
+          convertLog = [...convertLog, line].slice(-500);
         }
       );
       const inputExt = (fileLabel ?? "").split(".").pop()?.toLowerCase() ?? "";
@@ -398,6 +526,49 @@
       convertBusy = false;
       convertProgress = null;
       convertCancelled = false;
+    }
+  }
+
+  async function quickExtractAudio() {
+    if (!hasLfc || !filePath || !fileLabel || convertBusy) return;
+    const dirResult = await window.lfc.getOutputDir();
+    if (dirResult.ok === false) {
+      convertToast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      return;
+    }
+    const dot = fileLabel.lastIndexOf(".");
+    const base = dot >= 0 ? fileLabel.slice(0, dot) : fileLabel;
+    const sep = dirResult.dir.includes("\\") ? "\\" : "/";
+    const outPath = `${dirResult.dir}${sep}${base}-ses.mp3`;
+
+    const spec: import("@lfc/types").ConvertJobSpec = {
+      inputPath: filePath,
+      outputPath: outPath,
+      mode: "transcode",
+      audioOnlyOutput: true,
+      audioEncoder: "libmp3lame"
+    };
+
+    convertBusy = true;
+    outputPath = null;
+    outputPreviewUrl = null;
+    convertLog = [];
+    convertProgress = null;
+    convertToast = null;
+
+    const r = await window.lfc.runConvertJob(
+      { spec },
+      (percent) => { convertProgress = percent; },
+      (line) => { convertLog = [...convertLog, line].slice(-500); }
+    );
+    convertBusy = false;
+    convertProgress = null;
+
+    if (r.ok) {
+      outputPath = outPath;
+      convertToast = `Ses çıkarıldı: ${outPath}`;
+    } else if (r.ok === false) {
+      convertToast = r.message;
     }
   }
 
@@ -517,9 +688,20 @@
           <p class="preview-col-label">Kaynak</p>
           {#if inputPreviewUrl}
             <img src={inputPreviewUrl} alt="Kaynak önizleme" class="preview-img" />
+          {:else if videoPreviewUrl}
+            <!-- svelte-ignore a11y_media_has_caption -->
+            <video src={videoPreviewUrl} controls class="preview-img preview-video"></video>
+          {:else if probeSummary.inferredKind === "audio"}
+            <canvas
+              bind:this={waveformCanvas}
+              width="320"
+              height="80"
+              class="waveform-canvas"
+              aria-label="Ses dalga formu önizlemesi"
+            ></canvas>
           {:else}
             <div class="preview-placeholder" aria-label="Önizleme mevcut değil">
-              <span class="placeholder-kind">{probeSummary.inferredKind === "audio" ? "Ses" : "Video"}</span>
+              <span class="placeholder-kind">Video</span>
             </div>
           {/if}
           <p class="preview-filename" title={fileLabel ?? ""}>{fileLabel}</p>
@@ -610,7 +792,7 @@
             <label for="quality-select">Kalite ön ayarı</label>
             <select id="quality-select" bind:value={qualityPreset}>
               {#each QUALITY_OPTIONS as opt (opt.value)}
-                <option value={opt.value}>{opt.label}</option>
+                <option value={opt.value} title={opt.desc}>{opt.label}</option>
               {/each}
             </select>
             <p class="field-hint">
@@ -680,6 +862,53 @@
       {/if}
     </section>
 
+    {#if profiles.length > 0 || showProfileSave}
+      <details class="profiles-section">
+        <summary>Kaydedilmiş Profiller ({profiles.length})</summary>
+        <div class="profiles-body">
+          {#each profiles as p (p.id)}
+            <div class="profile-row">
+              <span class="profile-name" title={`${p.targetProfileId}${p.qualityPreset ? ' · ' + p.qualityPreset : ''}`}>{p.name}</span>
+              <button type="button" class="profile-load-btn" onclick={() => void applyProfile(p)}>Uygula</button>
+              <button type="button" class="profile-del-btn" onclick={() => void deleteProfile(p.id)}>Sil</button>
+            </div>
+          {/each}
+          {#if showProfileSave}
+            <div class="profile-save-row">
+              <input
+                type="text"
+                class="profile-name-input"
+                placeholder="Profil adı…"
+                bind:value={profileSaveName}
+                onkeydown={(e) => e.key === "Enter" && void saveCurrentProfile()}
+              />
+              <button type="button" class="profile-load-btn" onclick={() => void saveCurrentProfile()} disabled={!profileSaveName.trim()}>Kaydet</button>
+              <button type="button" class="profile-del-btn" onclick={() => { showProfileSave = false; profileSaveName = ""; }}>İptal</button>
+            </div>
+          {:else}
+            <button type="button" class="profile-add-btn" onclick={() => (showProfileSave = true)}>+ Mevcut ayarları kaydet</button>
+          {/if}
+        </div>
+      </details>
+    {:else}
+      <button type="button" class="profile-add-btn-inline" onclick={() => (showProfileSave = true)}>
+        {#if !showProfileSave}+ Profil kaydet{/if}
+      </button>
+      {#if showProfileSave}
+        <div class="profile-save-row">
+          <input
+            type="text"
+            class="profile-name-input"
+            placeholder="Profil adı…"
+            bind:value={profileSaveName}
+            onkeydown={(e) => e.key === "Enter" && void saveCurrentProfile()}
+          />
+          <button type="button" class="profile-load-btn" onclick={() => void saveCurrentProfile()} disabled={!profileSaveName.trim()}>Kaydet</button>
+          <button type="button" class="profile-del-btn" onclick={() => { showProfileSave = false; profileSaveName = ""; }}>İptal</button>
+        </div>
+      {/if}
+    {/if}
+
     <div class="action-row">
       <button
         type="button"
@@ -700,11 +929,28 @@
           class="cta stop-btn"
           onclick={() => void cancelConversion()}
         >Durdur</button>
+      {:else if probeSummary?.inferredKind === "video" && filePath && !convertBusy}
+        <button
+          type="button"
+          class="cta quick-audio-btn"
+          title="Videodan tek tıkla MP3 ses çıkar"
+          onclick={() => void quickExtractAudio()}
+        >♪ MP3 Çıkar</button>
       {/if}
       {#if convertToast}
         <p class="convert-status" role="status">{convertToast}</p>
       {/if}
     </div>
+
+    {#if convertLog.length > 0}
+      <details class="log-details">
+        <summary>FFmpeg log ({convertLog.length} satır)</summary>
+        <pre class="log-output" aria-live="polite">{convertLog.join("\n")}</pre>
+        <div class="log-actions">
+          <button type="button" class="log-clear-btn" onclick={() => (convertLog = [])}>Temizle</button>
+        </div>
+      </details>
+    {/if}
 
     <details class="advanced">
       <summary>Gelişmiş ayarlar</summary>
@@ -725,7 +971,12 @@
         {#if advancedFields.includes("encoder_availability") && probeSummary}
           <div class="encoder-checks" role="list">
             {#each selectedRow?.profile.requiredEncoders ?? [] as enc (enc)}
-              <span class:ok={encoderSet.has(enc)} class:bad={!encoderSet.has(enc)} role="listitem">
+              <span
+                class:ok={encoderSet.has(enc)}
+                class:bad={!encoderSet.has(enc)}
+                role="listitem"
+                title={encoderSet.has(enc) ? `${enc} encoder sistemde mevcut` : `${enc} encoder bulunamadı — bu format kullanılamaz`}
+              >
                 {enc}: {encoderSet.has(enc) ? "yüklü" : "yok"}
               </span>
             {/each}
@@ -733,14 +984,14 @@
         {/if}
 
         {#if advancedFields.includes("hwaccel_list")}
-          <p class="meta-row">
+          <p class="meta-row" title="Sistemde bulunan GPU/donanım hızlandırma yöntemleri. Encoder seçiminde otomatik kullanılır.">
             <span class="label">Donanım hızlandırma</span>
             <span class="value">{hwaccels.length ? hwaccels.join(", ") : "—"}</span>
           </p>
         {/if}
 
         {#if advancedFields.includes("override_video_encoder") && selectedRow?.profile.hasVideoOut}
-          <label class="field">
+          <label class="field" title="Hangi encoder kullanılacağını seçin. GPU encoder'lar çok daha hızlıdır ancak bazı sistemlerde bulunmayabilir.">
             <span>Video encoder</span>
             <select bind:value={overrideVideoEncoder}>
               <option value="">Varsayılan (profil)</option>
@@ -774,6 +1025,29 @@
             <p class="field-hint">Ayarlanırsa FFmpeg çıktıyı bu boyutta keser (-fs).</p>
           </label>
         {/if}
+
+        {#if probeSummary && !selectedHints?.audioOnlyOutput && probeSummary.hasAudio !== false}
+          <label class="field">
+            <span>Ses kanalı</span>
+            <select bind:value={audioChannels}>
+              <option value="">Kaynak ile aynı</option>
+              <option value="1">Mono (1 kanal)</option>
+              <option value="2">Stereo (2 kanal)</option>
+            </select>
+            <p class="field-hint">Mono: dosya boyutu küçülür, stereo ses kaybolur. Stereo: uyumluluk için zorla.</p>
+          </label>
+        {/if}
+
+        <label class="field">
+          <span>Ekstra FFmpeg argümanları</span>
+          <input
+            type="text"
+            class="text-input"
+            placeholder="-bf 2 -g 30 -movflags +faststart"
+            bind:value={extraFfmpegArgsRaw}
+          />
+          <p class="field-hint">Çıktı yolundan önce eklenir. Boşlukla ayırın. Yanlış argümanlar dönüşümü bozabilir.</p>
+        </label>
 
         {#if previewLine}
           <div class="preview">
@@ -970,6 +1244,17 @@
     border: 1px solid var(--border);
     background: rgba(0, 0, 0, 0.25);
   }
+  .preview-video {
+    max-height: 200px;
+    height: auto;
+  }
+  .waveform-canvas {
+    width: 100%;
+    height: 80px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    display: block;
+  }
 
   .preview-placeholder {
     width: 100%;
@@ -1135,6 +1420,156 @@
     font-size: 0.95rem;
   }
 
+  .profiles-section {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 0.5rem 0.85rem;
+    background: rgba(0, 0, 0, 0.08);
+  }
+
+  .profiles-section summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--muted);
+    user-select: none;
+  }
+
+  .profiles-body {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .profile-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .profile-name {
+    flex: 1;
+    font-size: 0.84rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profile-load-btn {
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--accent-start);
+    border-radius: var(--radius-button);
+    background: rgba(56, 189, 248, 0.1);
+    color: var(--accent-start);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .profile-load-btn:hover { background: rgba(56, 189, 248, 0.2); }
+  .profile-load-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .profile-del-btn {
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: var(--radius-button);
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .profile-del-btn:hover { background: rgba(239, 68, 68, 0.08); }
+
+  .profile-save-row {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .profile-name-input {
+    flex: 1;
+    min-width: 8rem;
+    border-radius: var(--radius-button);
+    border: 1px solid var(--border);
+    background: var(--surface-elevated);
+    color: var(--text);
+    padding: 0.3rem 0.6rem;
+    font: inherit;
+    font-size: 0.84rem;
+  }
+
+  .profile-name-input::placeholder { color: var(--muted); opacity: 0.6; }
+
+  .profile-add-btn, .profile-add-btn-inline {
+    font: inherit;
+    font-size: 0.78rem;
+    color: var(--muted);
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-button);
+    padding: 0.25rem 0.7rem;
+    cursor: pointer;
+    align-self: flex-start;
+  }
+
+  .profile-add-btn:hover, .profile-add-btn-inline:hover { color: var(--text); border-color: var(--accent-start); }
+
+  .log-details {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 0.5rem 0.85rem;
+    background: rgba(0, 0, 0, 0.18);
+  }
+
+  .log-details summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--muted);
+    user-select: none;
+  }
+
+  .log-output {
+    margin: 0.5rem 0 0;
+    padding: 0.65rem 0.75rem;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-family: monospace;
+    color: rgba(148, 215, 186, 0.9);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+    line-height: 1.45;
+  }
+
+  .log-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.4rem;
+  }
+
+  .log-clear-btn {
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.2rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-button);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .log-clear-btn:hover { color: var(--text); }
+
   .advanced {
     border: 1px solid var(--border);
     border-radius: var(--radius-card);
@@ -1252,6 +1687,19 @@
     background: rgba(239, 68, 68, 0.25);
   }
 
+  .quick-audio-btn {
+    background: rgba(34, 197, 94, 0.12);
+    color: var(--success, #22c55e);
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    box-shadow: none;
+    min-width: 110px;
+    font-size: 0.88rem;
+  }
+
+  .quick-audio-btn:hover {
+    background: rgba(34, 197, 94, 0.22);
+  }
+
   .field-hint {
     margin: 0.2rem 0 0;
     font-size: 0.75rem;
@@ -1276,6 +1724,22 @@
 
   .number-input::placeholder {
     color: var(--muted);
+  }
+
+  .text-input {
+    border-radius: var(--radius-button);
+    border: 1px solid var(--border);
+    background: var(--surface-elevated);
+    color: var(--text);
+    padding: 0.65rem 0.75rem;
+    font-size: 0.88rem;
+    font: inherit;
+    width: 100%;
+  }
+
+  .text-input::placeholder {
+    color: var(--muted);
+    opacity: 0.6;
   }
 
   .social-info-card {

@@ -2,6 +2,7 @@
   import { resolve } from "$app/paths";
   import { browser } from "$app/environment";
   import { onMount } from "svelte";
+  import { _ } from "svelte-i18n";
   import NavFeatureIcon from "./NavFeatureIcon.svelte";
   import { historyItems, loadHistory, clearHistory } from "$lib/history/store";
 
@@ -45,14 +46,60 @@
     return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  const features = [
-    { href: "/", label: "Dönüştür / sıkıştır", soon: false, icon: "convert" },
-    { href: "#", label: "En-boy oranı", soon: true, icon: "aspect" },
-    { href: "#", label: "Çözünürlük", soon: true, icon: "resolution" },
-    { href: "#", label: "Ses birleştirme", soon: true, icon: "audioMerge" },
-    { href: "#", label: "Video birleştirme", soon: true, icon: "videoMerge" },
-    { href: "#", label: "Kare çıkarma", soon: true, icon: "frames" }
-  ] as const;
+  function downloadBlob(content: string, filename: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportJson() {
+    const data = $historyItems.map((r) => ({
+      id: r.id,
+      timestamp: new Date(r.timestamp).toISOString(),
+      inputFilename: r.inputFilename,
+      outputFilename: r.outputFilename,
+      outputPath: r.outputPath,
+      targetProfileId: r.targetProfileId,
+      status: r.status,
+      errorMessage: r.errorMessage ?? null
+    }));
+    downloadBlob(JSON.stringify(data, null, 2), "lpc-gecmis.json", "application/json");
+  }
+
+  function exportCsv() {
+    const header = "id,timestamp,inputFilename,outputFilename,outputPath,targetProfileId,status,errorMessage";
+    const esc = (v: string | undefined | null) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const rows = $historyItems.map((r) =>
+      [r.id ?? "", new Date(r.timestamp).toISOString(), r.inputFilename, r.outputFilename, r.outputPath, r.targetProfileId, r.status, r.errorMessage ?? ""]
+        .map((v) => esc(String(v))).join(",")
+    );
+    downloadBlob([header, ...rows].join("\r\n"), "lpc-gecmis.csv", "text/csv;charset=utf-8");
+  }
+
+  type IconId = "convert" | "aspect" | "resolution" | "audioMerge" | "videoMerge" | "frames" | "batch" | "gif" | "apng" | "multiOutput" | "pdf" | "settings" | "trim" | "normalize" | "watermark" | "metadata";
+  type FeatureItem = { href: string; labelKey: string; soon: boolean; icon: IconId };
+  const features: FeatureItem[] = [
+    { href: "/", labelKey: "nav.convert", soon: false, icon: "convert" },
+    { href: "/aspect-ratio", labelKey: "nav.aspectRatio", soon: false, icon: "aspect" },
+    { href: "/resolution", labelKey: "nav.resolution", soon: false, icon: "resolution" },
+    { href: "/audio-merge", labelKey: "nav.audioMerge", soon: false, icon: "audioMerge" },
+    { href: "/video-merge", labelKey: "nav.videoMerge", soon: false, icon: "videoMerge" },
+    { href: "/frames", labelKey: "nav.frames", soon: false, icon: "frames" },
+    { href: "/batch", labelKey: "nav.batch", soon: false, icon: "batch" },
+    { href: "/gif", labelKey: "nav.gif", soon: false, icon: "gif" },
+    { href: "/apng", labelKey: "nav.apng", soon: false, icon: "apng" },
+    { href: "/multi-output", labelKey: "nav.multiOutput", soon: false, icon: "multiOutput" },
+    { href: "/pdf", labelKey: "nav.pdf", soon: false, icon: "pdf" },
+    { href: "/trim", labelKey: "nav.trim", soon: false, icon: "trim" },
+    { href: "/normalize", labelKey: "nav.normalize", soon: false, icon: "normalize" },
+    { href: "/watermark", labelKey: "nav.watermark", soon: false, icon: "watermark" },
+    { href: "/metadata", labelKey: "nav.metadata", soon: false, icon: "metadata" },
+    { href: "/settings", labelKey: "nav.settings", soon: false, icon: "settings" },
+  ];
 </script>
 
 <aside
@@ -61,13 +108,13 @@
   class:drawer-open={mobile && drawerOpen}
   data-collapsed={!mobile && collapsed ? "true" : "false"}
   role="navigation"
-  aria-label="Uygulama menüsü"
+  aria-label={$_("nav.appMenu")}
 >
   <div class="sidebar-top">
     <button
       type="button"
       class="icon-btn"
-      aria-label={mobile ? (drawerOpen ? "Menüyü kapat" : "Menüyü aç") : collapsed ? "Menüyü genişlet" : "Menüyü daralt"}
+      aria-label={mobile ? (drawerOpen ? $_("nav.closeMenu") : $_("nav.openMenu")) : collapsed ? $_("nav.expandMenu") : $_("nav.collapseMenu")}
       aria-expanded={mobile ? drawerOpen : !collapsed}
       aria-controls="app-sidebar"
       onclick={togglePanel}
@@ -80,23 +127,23 @@
   </div>
 
   <div class="nav-block">
-    <p class="nav-heading">Özellikler</p>
+    <p class="nav-heading">{$_("nav.features")}</p>
     <ul class="nav-list">
-      {#each features as item (item.label)}
+      {#each features as item (item.labelKey)}
         <li>
           {#if item.soon}
-            <span class="nav-link disabled" title="Yakında">
+            <span class="nav-link disabled" title={$_("nav.soon")}>
               <span class="nav-label-group">
                 <NavFeatureIcon id={item.icon} />
-                <span class="nav-text-full">{item.label}</span>
+                <span class="nav-text-full">{$_(item.labelKey)}</span>
               </span>
-              <span class="badge">Yakında</span>
+              <span class="badge">{$_("nav.soon")}</span>
             </span>
           {:else}
-            <a href={resolve("/")} class="nav-link" data-sveltekit-preload-data="off" onclick={closeDrawerAfterNav}>
+            <a href={item.href === "#" ? "#" : resolve(item.href as "/")} class="nav-link" data-sveltekit-preload-data="off" onclick={closeDrawerAfterNav}>
               <span class="nav-label-group">
                 <NavFeatureIcon id={item.icon} />
-                <span class="nav-text-full">{item.label}</span>
+                <span class="nav-text-full">{$_(item.labelKey)}</span>
               </span>
             </a>
           {/if}
@@ -107,19 +154,33 @@
 
   <div class="history-block">
     <div class="history-heading-row">
-      <p class="nav-heading">Geçmiş</p>
+      <p class="nav-heading">{$_("nav.history")}</p>
       {#if $historyItems.length > 0}
-        <button
-          type="button"
-          class="clear-btn"
-          title="Geçmişi temizle"
-          onclick={() => void clearHistory()}
-        >Temizle</button>
+        <div class="history-btns">
+          <button
+            type="button"
+            class="hist-btn export-btn"
+            title={$_("history.exportJson")}
+            onclick={exportJson}
+          >JSON</button>
+          <button
+            type="button"
+            class="hist-btn export-btn"
+            title={$_("history.exportCsv")}
+            onclick={exportCsv}
+          >CSV</button>
+          <button
+            type="button"
+            class="hist-btn clear-btn"
+            title={$_("history.clear")}
+            onclick={() => void clearHistory()}
+          >{$_("history.delete")}</button>
+        </div>
       {/if}
     </div>
     <ul class="history-list">
       {#if $historyItems.length === 0}
-        <li class="history-empty">Henüz dönüşüm yok.</li>
+        <li class="history-empty">{$_("history.empty")}</li>
       {:else}
         {#each $historyItems as row (row.id)}
           <li class="history-item">
@@ -128,7 +189,7 @@
             </span>
             <span class="history-meta">
               <span class="status" data-status={row.status === "success" ? "done" : "error"}>
-                {row.status === "success" ? "Tamam" : "Hata"}
+                {row.status === "success" ? $_("history.ok") : $_("history.error")}
               </span>
               <span class="time">{formatTime(row.timestamp)}</span>
             </span>
@@ -137,7 +198,7 @@
                 type="button"
                 class="history-folder-btn"
                 onclick={() => void window.lfc.showInFolder(row.outputPath)}
-              >Dizinde göster</button>
+              >{$_("history.showInFolder")}</button>
             {/if}
             {#if row.status === "error" && row.errorMessage}
               <span class="history-error-msg" title={row.errorMessage}>
@@ -366,15 +427,27 @@
     margin: 0;
   }
 
-  .clear-btn {
+  .history-btns {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+  }
+
+  .hist-btn {
     font: inherit;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     color: var(--muted);
     background: none;
-    border: none;
+    border: 1px solid transparent;
     cursor: pointer;
-    padding: 0.1rem 0.3rem;
+    padding: 0.1rem 0.35rem;
     border-radius: 4px;
+  }
+
+  .export-btn:hover {
+    color: var(--accent-start);
+    border-color: var(--accent-start);
+    background: rgba(56, 189, 248, 0.08);
   }
 
   .clear-btn:hover {

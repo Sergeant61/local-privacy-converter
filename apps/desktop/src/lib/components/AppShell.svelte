@@ -6,8 +6,29 @@
 
   let mobile = $state(false);
   let drawerOpen = $state(false);
+  let isDark = $state(true);
+
+  function applyTheme(dark: boolean) {
+    if (dark) {
+      document.documentElement.classList.remove("light");
+    } else {
+      document.documentElement.classList.add("light");
+    }
+    isDark = dark;
+    localStorage.setItem("lpc-theme", dark ? "dark" : "light");
+  }
+
+  function toggleTheme() {
+    applyTheme(!isDark);
+  }
 
   onMount(() => {
+    const stored = localStorage.getItem("lpc-theme");
+    if (stored) {
+      applyTheme(stored === "dark");
+    } else {
+      applyTheme(!window.matchMedia("(prefers-color-scheme: light)").matches);
+    }
     const mq = window.matchMedia("(max-width: 720px)");
     const sync = () => {
       const matches = mq.matches;
@@ -19,8 +40,19 @@
     sync();
     mq.addEventListener("change", sync);
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && drawerOpen) {
-        drawerOpen = false;
+      if (event.key === "Escape") {
+        if (drawerOpen) {
+          drawerOpen = false;
+        } else if ("lfc" in window && window.lfc) {
+          void window.lfc.cancelConvert();
+        }
+        return;
+      }
+      const ctrl = event.ctrlKey || event.metaKey;
+      if (ctrl && event.key === "o") {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent("lfc:open-file"));
+        return;
       }
     };
     window.addEventListener("keydown", onKey);
@@ -66,6 +98,16 @@
   <div class="main-surface" class:pad-mobile={mobile}>
     {@render children()}
   </div>
+
+  <button
+    type="button"
+    class="theme-toggle"
+    aria-label={isDark ? "Açık temaya geç" : "Karanlık temaya geç"}
+    title={isDark ? "Açık tema" : "Karanlık tema"}
+    onclick={toggleTheme}
+  >
+    {isDark ? "☀️" : "🌙"}
+  </button>
 </div>
 
 <style>
@@ -133,5 +175,30 @@
   .fab-icon {
     font-size: 1.1rem;
     line-height: 1;
+  }
+
+  .theme-toggle {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 70;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface-elevated);
+    cursor: pointer;
+    box-shadow: var(--shadow-card);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    line-height: 1;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .theme-toggle:hover {
+    background: var(--surface-hover);
+    transform: scale(1.08);
   }
 </style>

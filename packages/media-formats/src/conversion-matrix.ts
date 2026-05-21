@@ -19,6 +19,8 @@ import { getTargetById, TARGET_PROFILES } from "./target-profiles";
 /** Video girişi için önerilen tüm hedef profil kimlikleri (video çıktı + ses çıkartma + remux). */
 export const TARGET_IDS_FOR_VIDEO_INPUT: readonly TargetProfileId[] = [
   "mp4-h264-aac",
+  "mp4-h265-aac",
+  "mp4-av1-aac",
   "webm-vp9-opus",
   "mkv-h264-aac",
   "remux-copy",
@@ -33,7 +35,13 @@ export const TARGET_IDS_FOR_VIDEO_INPUT: readonly TargetProfileId[] = [
   "social-ig-stories",
   "social-msg-video",
   "social-tg-video",
-  "social-tg-audio"
+  "social-tg-audio",
+  "social-yt-1080",
+  "social-yt-4k",
+  "social-tt-video",
+  "social-li-video",
+  "social-x-video",
+  "social-dc-video"
 ] as const;
 
 /** Yalnız ses girişi: çok konteynerde kopya (remux) + yaygın ses kodlamaları. */
@@ -53,6 +61,7 @@ export const TARGET_IDS_FOR_IMAGE_INPUT: readonly TargetProfileId[] = [
   "image-png",
   "image-jpeg",
   "image-webp",
+  "image-avif",
   "social-wp-image",
   "social-ig-image",
   "social-msg-image",
