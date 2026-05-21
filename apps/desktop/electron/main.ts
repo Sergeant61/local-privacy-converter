@@ -136,15 +136,20 @@ function setTaskbarProgress(progress: number | null) {
 }
 
 function createTray() {
-  // Packaged: icon lives in process.resourcesPath (extraResources → tray-icon.png)
-  // Dev: load from build-resources relative to source
-  const iconPath = app.isPackaged
-    ? path.join(process.resourcesPath, "tray-icon.png")
-    : path.join(__dirname, "..", "build-resources", "tray-icon.png");
+  const resourceBase = app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, "..", "build-resources");
 
   try {
-    const img = nativeImage.createFromPath(iconPath);
-    // Template image adapts automatically to dark/light menu bar on macOS
+    // Build a multi-resolution native image for 1x + Retina @2x
+    const img = nativeImage.createEmpty();
+    const path1x = path.join(resourceBase, "tray-icon.png");
+    const path2x = path.join(resourceBase, "tray-icon@2x.png");
+    img.addRepresentation({ scaleFactor: 1.0, dataURL: nativeImage.createFromPath(path1x).toDataURL() });
+    if (fs.existsSync(path2x)) {
+      img.addRepresentation({ scaleFactor: 2.0, dataURL: nativeImage.createFromPath(path2x).toDataURL() });
+    }
+    // White template adapts to dark/light menu bar on macOS
     if (process.platform === "darwin") img.setTemplateImage(true);
     tray = new Tray(img);
     tray.setToolTip("Local Privacy Converter");

@@ -17,6 +17,8 @@ extraResources:
     to: ffmpeg
   - from: build-resources/tray-icon.png
     to: tray-icon.png
+  - from: build-resources/tray-icon@2x.png
+    to: tray-icon@2x.png
 
 asar: true
 
