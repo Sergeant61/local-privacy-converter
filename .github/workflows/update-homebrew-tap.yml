@@ -1,17 +1,25 @@
 name: Update Homebrew Tap
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
 
 jobs:
   update-tap:
+    # Only run when the Release workflow succeeded
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
-      - name: Extract version
+      - name: Get latest release version
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        run: |
+          TAG=$(curl -fsSL "https://api.github.com/repos/Sergeant61/local-privacy-converter/releases/latest" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Download DMGs and compute SHA256
         id: sha
@@ -73,7 +81,6 @@ jobs:
           end
           '''
 
-          # Remove leading spaces from heredoc indentation
           lines = cask.splitlines()
           dedented = "\n".join(line[10:] if line.startswith("          ") else line for line in lines)
 
