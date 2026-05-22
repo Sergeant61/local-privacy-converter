@@ -21,6 +21,16 @@ To upgrade later:
 brew upgrade --cask local-privacy-converter
 ```
 
+### macOS — "damaged" warning
+
+If macOS shows _"Local Privacy Converter.app is damaged and can't be opened"_, run this once in Terminal:
+
+```bash
+xattr -cr /Applications/Local\ Privacy\ Converter.app
+```
+
+This happens because the app is not yet notarized with an Apple Developer certificate. The command removes the quarantine flag Apple sets on downloaded files.
+
 ### Manual download
 
 Pre-built installers are available on the [Releases](https://github.com/Sergeant61/local-privacy-converter/releases) page.

@@ -1,9 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(pnpm exec *)",
-      "Bash(pnpm --filter @lfc/media-formats exec tsc --noEmit)",
-      "Bash(pnpm --filter desktop exec svelte-check --output=human)"
-    ]
+    "allow": []
   }
 }
