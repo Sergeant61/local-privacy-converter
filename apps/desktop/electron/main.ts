@@ -1,8 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, protocol, shell, Tray } from "electron";
+
+// Register before app.whenReady so Chromium honours the scheme as "secure"
+protocol.registerSchemesAsPrivileged([
+  { scheme: "lpc", privileges: { secure: true, standard: true, supportFetchAPI: true } },
+]);
 
 import type { MediaProbeSummary } from "@lfc/types";
 import {
@@ -1421,14 +1426,24 @@ async function createWindow(): Promise<void> {
     await window.loadURL(devUrl);
     window.webContents.openDevTools({ mode: "detach" });
   } else {
-    await window.loadFile(path.join(__dirname, "..", "build", "index.html"), {
-      hash: "/"
-    });
+    await window.loadURL("lpc://localhost/");
   }
 }
 
 async function bootstrap(): Promise<void> {
   await app.whenReady();
+
+  // Serve the SvelteKit static build via lpc:// so that absolute asset paths
+  // (/_app/immutable/...) resolve correctly in the packaged app.
+  const buildDir = path.join(__dirname, "..", "build");
+  protocol.handle("lpc", (req) => {
+    const { pathname } = new URL(req.url);
+    const filePath = pathname === "/" || pathname === ""
+      ? path.join(buildDir, "index.html")
+      : path.join(buildDir, pathname);
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+
   loadSettings();
   wireIpcHandlers();
   await createWindow();
