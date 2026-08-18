@@ -15,24 +15,52 @@ function aspectRatioCropFilter(ratio: string): string | null {
   return `crop=if(${wider}\\,ih*${aw}/${ah}\\,iw):if(${wider}\\,ih\\,iw*${ah}/${aw})`;
 }
 
-function vfScale(width?: number, height?: number, fps?: number, aspectRatio?: string): string[] {
+/** Yalnızca pozitif sonlu sayı bir ölçü sayılır — `0` ölçü değil, "verilmedi" de değil. */
+function usable(n: number | undefined): n is number {
+  return typeof n === "number" && Number.isFinite(n) && n > 0;
+}
+
+function vfScale(hints: VideoTranscodeHints | undefined): string[] {
   const segments: string[] = [];
+  const width = usable(hints?.width) ? hints.width : undefined;
+  const height = usable(hints?.height) ? hints.height : undefined;
+  const fps = usable(hints?.fps) ? hints.fps : undefined;
+  const aspectRatio = hints?.aspectRatio;
 
   if (aspectRatio) {
     const cropF = aspectRatioCropFilter(aspectRatio);
     if (cropF) segments.push(cropF);
   }
 
-  if (width ?? height) {
-    const w = width ?? -2;
-    const h = height ?? -2;
-    segments.push(`scale=${w}:${h}`);
+  if (width !== undefined && height !== undefined) {
+    // Her iki boyut da verildiğinde çıplak `scale=W:H` görüntüyü esnetir. Dikey
+    // sosyal presetler tam olarak bu yüzden 1080×1920 piksel ölçüsünü tutturup
+    // içeriği eziyordu (DENETIM.md D-08). Varsayılan artık "doldur ve kırp".
+    const fit = hints?.fit ?? "cover";
+    if (fit === "stretch") {
+      segments.push(`scale=${width}:${height}`);
+    } else if (fit === "contain") {
+      segments.push(
+        `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+        `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`
+      );
+    } else {
+      segments.push(
+        `scale=${width}:${height}:force_original_aspect_ratio=increase`,
+        `crop=${width}:${height}`
+      );
+    }
+    // Örnek en-boy oranı 1'e sabitlenmezse oynatıcı kareyi yine yamuk gösterir.
+    segments.push("setsar=1");
+  } else if (width !== undefined || height !== undefined) {
+    // Tek boyut verildiğinde diğeri oranı koruyacak şekilde türetilir.
+    segments.push(`scale=${width ?? -2}:${height ?? -2}`, "setsar=1");
   } else if (aspectRatio) {
-    // Ensure even dimensions required by most encoders after crop
-    segments.push("scale=trunc(iw/2)*2:trunc(ih/2)*2");
+    // Kırpma sonrası çift boyut şartı — çoğu kodlayıcı tek boyut kabul etmez.
+    segments.push("scale=trunc(iw/2)*2:trunc(ih/2)*2", "setsar=1");
   }
 
-  if (fps) {
+  if (fps !== undefined) {
     segments.push(`fps=${fps}`);
   }
 
@@ -54,9 +82,73 @@ function crf(map: [string, string, string, string, string], q: QualityTier): str
   return map[idx[q]] ?? map[2];
 }
 
+/** Tek kare görüntü üreten çıktı uzantıları. */
+const STILL_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "avif", "bmp", "tif", "tiff"]);
+/** Yalnızca görüntü kodlayan encoder'lar. */
+const IMAGE_ENCODERS = new Set(["png", "mjpeg", "libwebp"]);
+
+/**
+ * Çıktı tek kare görüntü mü?
+ *
+ * Yalnızca encoder'a bakmak yetmiyordu: AVIF `libsvtav1` ile kodlanıyor ve
+ * libsvtav1 aynı zamanda geçerli bir video kodlayıcısı. Sesli MP4'ten AVIF
+ * üretildiğinde iş video dalına düşüyor, `-c:a aac` ekleniyor, `-an`
+ * eklenmiyordu — sonuç durağan görüntü değil, iki AV1 akışlı animasyonlu
+ * dosyaydı (DENETIM.md D-15). Uzantı bu ayrımı güvenilir biçimde taşıyor.
+ */
+function isStillImageOutput(spec: ConvertJobSpec): boolean {
+  if (spec.videoEncoder != null && IMAGE_ENCODERS.has(spec.videoEncoder)) return true;
+  const ext = spec.outputPath.split(".").pop()?.toLowerCase();
+  return ext !== undefined && STILL_IMAGE_EXTENSIONS.has(ext);
+}
+
+/**
+ * Donanım kodlayıcısı seçildiğinde çözme tarafını da hızlandır (DENETIM.md D-17).
+ *
+ * `capabilities.ts` VideoToolbox'ı doğru tespit ediyordu ama `-hwaccel` hiçbir
+ * zaman argümanlara yansımıyordu; hızlandırma yalnızca yarım bağlıydı. Çıktı
+ * biçimi belirtilmiyor: kareler sistem belleğine indiriliyor, böylece `-vf`
+ * zinciri çalışmaya devam ediyor ve desteklenmeyen girdide ffmpeg yazılım
+ * çözmeye kendiliğinden düşüyor.
+ */
+function hwaccelArgs(encoder: ConvertJobSpec["videoEncoder"]): string[] {
+  if (encoder == null) return [];
+  if (encoder.endsWith("_videotoolbox")) return ["-hwaccel", "videotoolbox"];
+  if (encoder.endsWith("_nvenc")) return ["-hwaccel", "cuda"];
+  if (encoder.endsWith("_qsv")) return ["-hwaccel", "qsv"];
+  if (encoder.endsWith("_vaapi")) return ["-hwaccel", "vaapi"];
+  return [];
+}
+
+/** Kalite katmanı başına piksel başına bit — çözünürlüğe duyarlı bitrate için. */
+const BITS_PER_PIXEL: Record<QualityTier, number> = {
+  high: 0.15,
+  compatible: 0.1,
+  balanced: 0.07,
+  small: 0.035,
+  very_small: 0.02
+};
+
+/**
+ * VideoToolbox `-b:v` değeri. Sabit değer 320×240 için savurgan, 4K için
+ * yetersizdi (DENETIM.md D-17); hedef ya da kaynak ölçüsü biliniyorsa bitrate
+ * kare alanına göre hesaplanır. Ölçü bilinmiyorsa katman varsayılanı korunur.
+ */
+function videotoolboxBitrate(spec: ConvertJobSpec, q: QualityTier, fallback: string): string {
+  const h = spec.videoHints;
+  const width = usable(h?.width) ? h.width : usable(h?.sourceWidth) ? h.sourceWidth : undefined;
+  const height = usable(h?.height) ? h.height : usable(h?.sourceHeight) ? h.sourceHeight : undefined;
+  if (width === undefined || height === undefined) return fallback;
+  const fps = usable(h?.fps) ? h.fps : 30;
+  const bps = Math.round(width * height * fps * BITS_PER_PIXEL[q]);
+  // 300 kbps altı izlenemez, 60 Mbps üstü hiçbir kullanım için gerekmiyor.
+  return String(Math.min(60_000_000, Math.max(300_000, bps)));
+}
+
 function videoArgsForEncoder(
   encoder: NonNullable<ConvertJobSpec["videoEncoder"]>,
-  q: QualityTier
+  q: QualityTier,
+  spec?: ConvertJobSpec
 ): string[] {
   switch (encoder) {
     case "libx264":
@@ -100,9 +192,19 @@ function videoArgsForEncoder(
 
     // Apple VideoToolbox
     case "h264_videotoolbox":
-      return ["-c:v", "h264_videotoolbox", "-b:v", crf(["12M", "8M", "5M", "2M", "1M"], q)];
+      return [
+        "-c:v",
+        "h264_videotoolbox",
+        "-b:v",
+        spec ? videotoolboxBitrate(spec, q, crf(["12M", "8M", "5M", "2M", "1M"], q)) : crf(["12M", "8M", "5M", "2M", "1M"], q)
+      ];
     case "hevc_videotoolbox":
-      return ["-c:v", "hevc_videotoolbox", "-b:v", crf(["10M", "6M", "4M", "2M", "800k"], q)];
+      return [
+        "-c:v",
+        "hevc_videotoolbox",
+        "-b:v",
+        spec ? videotoolboxBitrate(spec, q, crf(["10M", "6M", "4M", "2M", "800k"], q)) : crf(["10M", "6M", "4M", "2M", "800k"], q)
+      ];
 
     // VAAPI
     case "h264_vaapi":
@@ -243,13 +345,28 @@ function videoArgsForTargetBitrate(
 export function buildFfmpegArgs(spec: ConvertJobSpec): string[] {
   const args = ["-hide_banner", "-nostdin", "-y"];
 
+  // `-hwaccel` girdiden ÖNCE gelmek zorunda; çözme tarafını da hızlandırır.
+  if (spec.mode !== "copy") {
+    args.push(...hwaccelArgs(spec.videoEncoder));
+  }
+
   args.push("-i", spec.inputPath);
 
   const extra = spec.extraFfmpegArgs?.filter((a) => a.trim().length > 0) ?? [];
   const acArgs = spec.audioChannels != null ? ["-ac", String(spec.audioChannels)] : [];
+  // `container` sözleşmede vardı ama hiçbir yerde okunmuyordu; uzantısız çıktı
+  // yolunda dönüşüm bu yüzden hata veriyordu (DENETIM.md D-16).
+  const formatArgs = spec.container ? ["-f", spec.container] : [];
 
   if (spec.mode === "copy") {
+    // `copyAllStreams` de ölü bir alandı: `@lfc/types` onu "tüm akışların
+    // kopyalanması" diye tanımlıyor, ama remux `-map 0` içermediği için ek ses
+    // ve altyazı izlerini sessizce düşürüyordu (DENETIM.md D-16).
+    if (spec.copyAllStreams === true) {
+      args.push("-map", "0");
+    }
     args.push(...copyStreams());
+    args.push(...formatArgs);
     args.push(...extra, spec.outputPath);
     return args;
   }
@@ -263,19 +380,22 @@ export function buildFfmpegArgs(spec: ConvertJobSpec): string[] {
     args.push("-vn");
     args.push(...pickAudioEncoderArgs(spec.audioEncoder, q, audioBudgetBps ?? undefined));
     args.push(...acArgs);
+    args.push(...formatArgs);
     args.push(...extra, spec.outputPath);
     return args;
   }
 
   // Görüntü çıktısında boyut bütçesi anlamsız — tek kare zaten süreye bağlı değil.
-  if (
-    spec.videoEncoder === "png" ||
-    spec.videoEncoder === "mjpeg" ||
-    spec.videoEncoder === "libwebp"
-  ) {
-    args.push(...vfScale(spec.videoHints?.width, spec.videoHints?.height, spec.videoHints?.fps, spec.videoHints?.aspectRatio));
-    args.push(...videoArgsForEncoder(spec.videoEncoder, q));
+  if (isStillImageOutput(spec)) {
+    args.push(...vfScale(spec.videoHints));
+    // `-frames:v 1` olmadan PNG/JPEG hedefleri ilk kareyi yazıp ikincide exit 234
+    // ile düşüyor, ama diskte geçerli görünen kısmi bir dosya bırakıyordu; aynı
+    // girdiyle libwebp animasyon üretiyordu — üç görüntü hedefi, üç ayrı
+    // davranış (DENETIM.md D-14, D-15).
+    args.push("-frames:v", "1");
+    args.push(...videoArgsForEncoder(spec.videoEncoder ?? "mjpeg", q, spec));
     args.push("-an");
+    args.push(...formatArgs);
     args.push(...extra, spec.outputPath);
     return args;
   }
@@ -283,14 +403,15 @@ export function buildFfmpegArgs(spec: ConvertJobSpec): string[] {
   const videoEncoder = spec.videoEncoder ?? "libx264";
   const videoBudgetBps = targetVideoBitrateBps(spec, q);
 
-  args.push(...vfScale(spec.videoHints?.width, spec.videoHints?.height, spec.videoHints?.fps, spec.videoHints?.aspectRatio));
+  args.push(...vfScale(spec.videoHints));
   args.push(
     ...(videoBudgetBps != null
       ? videoArgsForTargetBitrate(videoEncoder, videoBudgetBps)
-      : videoArgsForEncoder(videoEncoder, q))
+      : videoArgsForEncoder(videoEncoder, q, spec))
   );
   args.push(...pickAudioEncoderArgs(spec.audioEncoder, q));
   args.push(...acArgs);
+  args.push(...formatArgs);
   args.push(...extra, spec.outputPath);
   return args;
 }

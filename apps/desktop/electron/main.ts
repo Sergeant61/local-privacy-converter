@@ -429,16 +429,45 @@ function wireIpcHandlers() {
         };
       }
 
-      // Hedef boyut bitrate'e çevrilebilsin diye kaynak süresini spec'e taşı.
-      // Süre yoksa build-args boyut kısıtını hiç uygulamaz (kırpma yerine tam dosya).
-      const durationSec = parsed.data.inputDurationSec ?? null;
+      // Kaynak ölçülerini spec'e taşı: hedef boyut bitrate'e ancak süreyle
+      // çevrilebiliyor, donanım kodlayıcılarının bitrate'i de kare alanına
+      // bağlı (DENETIM.md D-04, D-17). Süre yoksa build-args boyut kısıtını
+      // hiç uygulamaz — kırpmaktansa tam dosya yeğdir.
+      const spec = parsed.data.spec;
+      const needsSourceInfo =
+        spec.videoHints?.targetSizeMb != null ||
+        (spec.videoEncoder ?? "").endsWith("_videotoolbox");
+
+      let durationSec = parsed.data.inputDurationSec ?? null;
+      let sourceWidth: number | undefined;
+      let sourceHeight: number | undefined;
+      if (needsSourceInfo) {
+        try {
+          const probe = await runFfprobeJson(
+            resolveFfprobeExecutable(lpcSettings.ffmpegBinary),
+            spec.inputPath
+          );
+          if (probe.ok) {
+            const video = probe.json.streams?.find((st) => st.codec_type === "video");
+            if (typeof video?.width === "number" && video.width > 0) sourceWidth = video.width;
+            if (typeof video?.height === "number" && video.height > 0) sourceHeight = video.height;
+            const probed = Number(probe.json.format?.duration);
+            if (durationSec == null && Number.isFinite(probed) && probed > 0) durationSec = probed;
+          }
+        } catch {
+          // Ölçü alınamazsa build-args ilgili kısıtı uygulamaz; iş yine de koşar.
+        }
+      }
+
+      const extraHints = {
+        ...(durationSec != null ? { sourceDurationSec: durationSec } : {}),
+        ...(sourceWidth != null ? { sourceWidth } : {}),
+        ...(sourceHeight != null ? { sourceHeight } : {})
+      };
       const specForArgs =
-        durationSec != null && parsed.data.spec.videoHints?.targetSizeMb != null
-          ? {
-              ...parsed.data.spec,
-              videoHints: { ...parsed.data.spec.videoHints, sourceDurationSec: durationSec }
-            }
-          : parsed.data.spec;
+        Object.keys(extraHints).length > 0
+          ? { ...spec, videoHints: { ...spec.videoHints, ...extraHints } }
+          : spec;
 
       const args = buildFfmpegArgs(specForArgs);
       const ac = new AbortController();
