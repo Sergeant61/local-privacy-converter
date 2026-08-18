@@ -72,6 +72,7 @@ declare global {
         inputPath: string;
         streamIndex: number;
         outputPath: string;
+        format?: "srt" | "ass" | "vtt";
       }) => Promise<{ ok: true } | { ok: false; message: string }>;
       videoTrim: (
         req: {

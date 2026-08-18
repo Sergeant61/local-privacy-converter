@@ -15,6 +15,12 @@ import type { MediaProbeSummary } from "@lfc/types";
 import {
   buildFfmpegArgs,
   buildTrimArgs,
+  buildSubtitleExtractArgs,
+  buildConcatCopyArgs,
+  buildConcatListContent,
+  buildVideoMergeFilterArgs,
+  planVideoMerge,
+  summarizeMergeInput,
   ffprobeJsonToSummary,
   listFfmpegCapabilities,
   probeFfmpegVersion,
@@ -859,19 +865,40 @@ function wireIpcHandlers() {
         return { ok: false, message: e instanceof Error ? e.message : String(e) };
       }
 
-      // concat demuxer için geçici liste dosyası
-      const listPath = outputPath + ".concat-list.txt";
-      const listContent = (inputPaths as string[])
-        .map((p) => `file '${p.replace(/'/g, "'\\''")}'`)
-        .join("\n");
-      await fs.promises.writeFile(listPath, listContent, "utf8");
+      // Girdiler önce özetlenir: uyumsuz dosyaları concat demuxer'a vermek
+      // sessizce bozuk çıktı üretiyordu — ffmpeg exit 0 dönüyor ama ikinci
+      // klip yanlış çözünürlükte ve ses akışı düşmüş oluyordu (DENETIM.md D-05).
+      let ffprobeExec: string;
+      try {
+        ffprobeExec = resolveFfprobeExecutable(lpcSettings.ffmpegBinary);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
 
-      const args = [
-        "-f", "concat", "-safe", "0",
-        "-i", listPath,
-        "-c", "copy",
-        "-y", outputPath
-      ];
+      const summaries = [];
+      for (const inputPath of inputPaths) {
+        const probe = await runFfprobeJson(ffprobeExec, inputPath);
+        if (!probe.ok) {
+          return { ok: false, message: `${path.basename(inputPath)} okunamadı: ${probe.message}` };
+        }
+        summaries.push(summarizeMergeInput(inputPath, probe.json));
+      }
+
+      const withoutVideo = summaries.find((sum) => sum.width === null);
+      if (withoutVideo) {
+        return { ok: false, message: `${path.basename(withoutVideo.path)} video akışı içermiyor.` };
+      }
+
+      const plan = planVideoMerge(summaries);
+      let listPath: string | null = null;
+      let args: string[];
+      if (plan.strategy === "copy") {
+        listPath = outputPath + ".concat-list.txt";
+        await fs.promises.writeFile(listPath, buildConcatListContent(inputPaths), "utf8");
+        args = buildConcatCopyArgs(listPath, outputPath);
+      } else {
+        args = buildVideoMergeFilterArgs(summaries, plan.target, outputPath);
+      }
       const ac = new AbortController();
       currentConvertAbort = ac;
       updateTrayMenu("Dönüştürülüyor…");
@@ -884,7 +911,9 @@ function wireIpcHandlers() {
         }
       });
       currentConvertAbort = null;
-      fs.promises.unlink(listPath).catch(() => undefined);
+      if (listPath) {
+        fs.promises.unlink(listPath).catch(() => undefined);
+      }
       if (run.ok) {
         notifyCompletion("Video Birleştirme Tamamlandı", "Dosyalar başarıyla birleştirildi.");
         return { ok: true };
@@ -1122,6 +1151,11 @@ function wireIpcHandlers() {
       const inputPath = inGuard.path;
       const outputPath = outGuard.path;
       const streamIndex = parsed.data.streamIndex;
+      // Çıktı uzantısı formatı belirliyor; arayüz `format` göndermezse ondan türet.
+      const extension = outputPath.split(".").pop()?.toLowerCase();
+      const format =
+        parsed.data.format ??
+        (extension === "ass" || extension === "vtt" || extension === "srt" ? extension : "srt");
 
       let executable: string;
       try {
@@ -1130,14 +1164,31 @@ function wireIpcHandlers() {
         return { ok: false, message: e instanceof Error ? e.message : String(e) };
       }
 
-      const args = [
-        "-i", inputPath,
-        "-map", `0:${streamIndex}`,
-        "-c:s", "copy",
-        "-y", outputPath
-      ];
+      // Kaynak codec'i bilmeden hedef codec seçilemez: `-c:s copy` yalnızca
+      // kaynakla hedef zaten aynıysa doğru, bitmap altyazıda ise hiçbir metin
+      // formatı mümkün değil (DENETIM.md D-06).
+      let sourceCodec: string | null = null;
+      try {
+        const probe = await runFfprobeJson(resolveFfprobeExecutable(lpcSettings.ffmpegBinary), inputPath);
+        if (probe.ok) {
+          sourceCodec = probe.json.streams?.[streamIndex]?.codec_name ?? null;
+        }
+      } catch {
+        sourceCodec = null;
+      }
 
-      const result = await runFfmpegJob(executable, args, {});
+      const built = buildSubtitleExtractArgs({
+        inputPath,
+        outputPath,
+        streamIndex,
+        format,
+        sourceCodec
+      });
+      if (!built.ok) {
+        return { ok: false, message: built.reason };
+      }
+
+      const result = await runFfmpegJob(executable, built.args, {});
       if (result.ok) return { ok: true };
       return { ok: false, message: result.stderr };
     }

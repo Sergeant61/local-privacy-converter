@@ -19,6 +19,16 @@ export {
 export { buildFfmpegArgs } from "./build-args";
 export { buildTrimArgs } from "./trim-args";
 export type { TrimArgsInput, TrimArgsResult } from "./trim-args";
+export {
+  summarizeMergeInput,
+  planVideoMerge,
+  buildConcatListContent,
+  buildConcatCopyArgs,
+  buildVideoMergeFilterArgs
+} from "./merge-args";
+export type { MergeInputSummary, MergePlan, MergeTarget } from "./merge-args";
+export { buildSubtitleExtractArgs, subtitleExtensionFor } from "./subtitle-args";
+export type { SubtitleFormat, SubtitleExtractInput, SubtitleExtractResult } from "./subtitle-args";
 export { ffprobeJsonToSummary, runFfprobeJson } from "./ffprobe";
 export type { FfprobeFileJson, FfprobeFormatJson, FfprobeStreamJson } from "./ffprobe";
 export { runFfmpegJob } from "./run-ffmpeg";
