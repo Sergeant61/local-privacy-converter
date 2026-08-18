@@ -29,14 +29,14 @@ Bulgu ID'leri (`D-01` … `D-24`) sabittir, yeniden numaralandırma.
 |---|---|---|
 | 🔴 Kritik | 1 | **1** |
 | 🟠 Yüksek | 6 | **6** |
-| 🟡 Orta | 17 | **15** |
-| **Toplam** | **24** | **22** |
+| 🟡 Orta | 17 | **16** |
+| **Toplam** | **24** | **23** |
 
-**Açık kalan 2 bulgu:** D-19 (ffprobe sürüm farkı — kısmen ele alındı) · D-24 (kilit dosyası, ayrı PR gerektiriyor).
+**Açık kalan 1 bulgu:** D-19 (ffprobe sürüm farkı — kısmen ele alındı; bağımlılık ağacında 7.x arm64 ffprobe yok).
 
-Kritik ve yüksek bulguların tamamı, orta bulguların 15'i kapandı; hepsi gerçek FFmpeg koşumuyla doğrulandı.
+Kritik ve yüksek bulguların tamamı, orta bulguların 16'sı kapandı; hepsi gerçek FFmpeg koşumuyla doğrulandı.
 
-Temel ölçümler: `pnpm typecheck` **6/6 temiz** · `pnpm lint` **0 hata / 2 uyarı** · **190 test geçiyor** (123 ffmpeg-core + 39 media-formats + 28 validators) · CI kapısı **aktif**
+Temel ölçümler: `pnpm typecheck` **6/6 temiz** · `pnpm lint` **0 hata / 2 uyarı** · **190 test geçiyor** (123 ffmpeg-core + 39 media-formats + 28 validators) · CI kapısı **aktif** ve `--frozen-lockfile` ile tekrarlanabilir
 
 ---
 
@@ -221,7 +221,7 @@ Temel ölçümler: `pnpm typecheck` **6/6 temiz** · `pnpm lint` **0 hata / 2 uy
   > **✅ Kapatıldı:** 2026-08-18 · [.github/workflows/ci.yml](.github/workflows/ci.yml) eklendi — main'e açılan her PR'da ve main'e her push'ta typecheck → lint → test.
   > **Beraberinde:** Vitest kuruldu ve `buildFfmpegArgs` / `buildTrimArgs` için 34 duman testi yazıldı. Testlerin regresyonu gerçekten yakaladığı, üç düzeltme tek tek geri alınarak doğrulandı (D-02 → 4, D-03 → 7, D-04 → 6 test kırılıyor). Trim mantığı test edilebilmesi için IPC handler'ından saf `buildTrimArgs` fonksiyonuna çıkarıldı.
   > **Ayrıca:** 23 lint hatası sıfıra indirildi (kapının yeşil açılabilmesi için) — bu sırada erişilemeyen bir `{#if}` dalı da bulunup silindi.
-  > **Kalan eksik:** kilit dosyası uyumsuzluğu nedeniyle `--frozen-lockfile` kullanılamıyor, bkz. **D-24**.
+  > **Güncelleme:** 2026-08-18 · kilit dosyası pnpm 9 ile yeniden üretildiği için kapı artık `--frozen-lockfile` ile çalışıyor (D-24).
   > [.github/workflows/release.yml](.github/workflows/release.yml) yalnızca sürüm etiketiyle tetikleniyor ve typecheck/lint/test çalıştırmadan doğrudan paketleyip yayınlıyor. PR veya push üzerinde çalışan CI hiç yok. Şu an `pnpm lint` **23 hata / 2 uyarı** veriyor ve bunu yakalayan hiçbir şey yok. Repoda **0 test dosyası** var.
   > **Not:** Bu denetimde bulunan kırık özelliklerin tamamı tür kontrolünden temiz geçiyor — ve tamamı tek bir `buildFfmpegArgs` anlık görüntü testiyle yakalanabilirdi.
 
@@ -235,7 +235,16 @@ Temel ölçümler: `pnpm typecheck` **6/6 temiz** · `pnpm lint` **0 hata / 2 uy
   > **Doğrulama:** 7 birim testi; `-metadata "title=My Movie"` artık iki argüman.
   > [routes/resolution/+page.svelte:155](apps/desktop/src/routes/resolution/+page.svelte#L155) — `...(keepAspect ? {} : {})`, iki dal da boş. "En-boy oranını koru" anahtarı **hiçbir şey yapmıyor**. Ayrıca extra FFmpeg argümanları alanı `split(/\s+/)` ile bölündüğü ve tırnak desteklemediği için boşluk içeren hiçbir değer yazılamıyor (ör. `-metadata title=My Movie`).
 
-- [ ] **D-24** — Kilit dosyası beyan edilen paket yöneticisiyle uyumsuz
+- [x] **D-24** — Kilit dosyası beyan edilen paket yöneticisiyle uyumsuz
+  > **✅ Kapatıldı:** 2026-08-18 · [pnpm-lock.yaml](pnpm-lock.yaml) · [ci.yml](.github/workflows/ci.yml) · [release.yml](.github/workflows/release.yml)
+  > **Ne yapıldı:** Kilit dosyası pnpm 9.15.4 ile sıfırdan üretildi (`lockfileVersion 5.4` → `'9.0'`); `ci.yml` ve `release.yml` `--frozen-lockfile`'a geçirildi.
+  > **Ölçüm (öncesi):** pnpm 9.15.4 + eski kilit dosyası → `ERR_PNPM_LOCKFILE_BREAKING_CHANGE  Lockfile not compatible with current pnpm`. Bulgunun iddiası doğrulandı.
+  > **Ölçüm (sonrası):** `node_modules` tamamen silinip `pnpm install --frozen-lockfile` → temiz kurulum, 4.1 sn.
+  > **Bağımlılık ağacı gerçekten değişti** — bulgunun bu PR'ı ayırma gerekçesi buydu. Temiz ağaç karşılaştırmasında **84 paket sürüm değiştirdi**; en dikkate değerleri:
+  > `@sveltejs/kit` 2.59.1 → 2.70.2 · `vite` 8.0.11 → 8.2.1 · `svelte` 5.55.5 → 5.56.9 · `typescript-eslint` 8.59.2 → 8.67.0 · `turbo` 2.9.10 → 2.10.10.
+  > Paketleme zinciri **kıpırdamadı**: `electron` 39.8.10 ve `electron-builder` 25.1.8 aynı kaldı, `typescript` 5.7.3 aynı kaldı.
+  > **Paketleme doğrulaması** (bulgunun istediği): `pnpm dist:dir` yeni ağaçla koştu — electron-builder 25.1.8, arm64, `Local Privacy Converter.app` üretildi (713 MB, app.asar 6.3 MB), gömülü ffmpeg/ffprobe yerinde. Paketlenen uygulama başlatıldı: 6 sn boyunca ayakta kaldı, stderr boş.
+  > **Kapı:** `pnpm typecheck` 6/6 temiz · `pnpm lint` 0 hata · **190 test geçiyor** — hepsi yeni ağaçta, turbo önbelleği boşken koştu.
   > **Konum:** [pnpm-lock.yaml](pnpm-lock.yaml) · [package.json](package.json)
   > **Bulgu:** `package.json` `pnpm@9.15.4` beyan ediyor, ama depodaki `pnpm-lock.yaml` hâlâ **lockfileVersion 5.4** (pnpm 7 formatı). pnpm 9 bu dosyayı `Ignoring not compatible lockfile` diyerek tamamen yok sayıyor.
   > **Etki:** `--frozen-lockfile` hiçbir yerde kullanılamıyor. `release.yml` ve `ci.yml` `--no-frozen-lockfile` ile çalışmak zorunda, yani **bağımlılıklar her koşumda taze çözülüyor**. Sürüm çıkarken kullanıcıya giden paketin bağımlılık ağacı, yerelde test edilenle aynı olduğunun garantisi yok; CI de tekrarlanabilir değil.

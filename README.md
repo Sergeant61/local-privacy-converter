@@ -126,13 +126,23 @@ Ready-made profiles with codec, resolution and file-size limits baked in. Video 
 ### Prerequisites
 
 - [Node.js](https://nodejs.org) ≥ 20
-- [pnpm](https://pnpm.io) 9.x (`npm i -g pnpm`)
+- [pnpm](https://pnpm.io) **9.15.4** — pinned in `package.json` via `packageManager`
+
+The lockfile is `lockfileVersion 9.0`; pnpm 7 or 8 will refuse it. The simplest
+way to get the exact pinned version is Corepack, which ships with Node:
+
+```bash
+corepack enable
+```
 
 ### Install dependencies
 
 ```bash
 pnpm install
 ```
+
+CI installs with `--frozen-lockfile`, so a change to any `package.json` must be
+committed together with the updated `pnpm-lock.yaml` or the build fails.
 
 ### Run in development mode
 
