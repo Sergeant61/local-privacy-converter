@@ -11,6 +11,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: "lpc", privileges: { secure: true, standard: true, supportFetchAPI: true } },
 ]);
 
+import { isNewerVersion } from "@lfc/media-formats";
 import type { MediaProbeSummary } from "@lfc/types";
 import {
   applyImageSizeAttempt,
@@ -94,6 +95,9 @@ const PROFILES_SAVE_CHANNEL = "lfc/profiles/save";
 const PROFILES_DELETE_CHANNEL = "lfc/profiles/delete";
 const PDF_CONVERT_CHANNEL = "lfc/ffmpeg/pdf-convert";
 const CHECK_UPDATE_CHANNEL = "lfc/app/check-update";
+
+/** Güncelleme kontrolünün sorguladığı depo. `package.json` `repository` alanıyla aynı olmalı. */
+const UPDATE_REPO = "Sergeant61/local-privacy-converter";
 
 // Must be set before app.whenReady() so menu bar and dock show the correct name
 app.setName("Local Privacy Converter");
@@ -757,7 +761,9 @@ function wireIpcHandlers() {
       return new Promise((resolve) => {
         const options = {
           hostname: "api.github.com",
-          path: "/repos/recepozen/file-converter-api/releases/latest",
+          // Eski adres (`recepozen/file-converter-api`) HTTP 404 dönüyordu:
+          // özellik üretimde tamamen ölüydü (DENETIM.md D-18).
+          path: `/repos/${UPDATE_REPO}/releases/latest`,
           method: "GET",
           headers: { "User-Agent": "LPC-App", Accept: "application/vnd.github.v3+json" }
         };
@@ -772,13 +778,15 @@ function wireIpcHandlers() {
                 resolve({ ok: false, message: "Sürüm etiketi alınamadı." });
                 return;
               }
-              const hasUpdate = tag !== currentVersion;
+              // String eşitsizliği değil sürüm karşılaştırması: uzaktaki etiket
+              // ESKİ olsa bile eskisi "güncelleme var" diyordu (DENETIM.md D-18).
+              const hasUpdate = isNewerVersion(tag, currentVersion);
               resolve({
                 ok: true,
                 currentVersion,
                 latestVersion: tag,
                 hasUpdate,
-                releaseUrl: json.html_url ?? "https://github.com/recepozen/file-converter-api/releases"
+                releaseUrl: json.html_url ?? `https://github.com/${UPDATE_REPO}/releases`
               });
             } catch {
               resolve({ ok: false, message: "GitHub API yanıtı ayrıştırılamadı." });

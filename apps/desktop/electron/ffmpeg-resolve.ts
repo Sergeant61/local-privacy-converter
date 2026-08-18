@@ -118,14 +118,28 @@ function ffprobeBinaryName(): string {
 }
 
 /**
- * ffprobe yolu: geçersiz kılma → LFC_FFPROBE_PATH → (paketliyse) resources/ffmpeg → ffprobe-static.
- * Not: ffprobe-static FFmpeg 4.x ikilisi içerir — gömülü ffmpeg 7.x ile arasında üç major
- * sürüm fark var (DENETIM.md D-19). Modern konteynerlerde ayrışma riski gerçek.
+ * ffprobe yolu: özel ffmpeg'in yanındaki ffprobe → LFC_FFPROBE_PATH →
+ * (paketliyse) resources/ffmpeg → ffprobe-static.
+ *
+ * **Parametre ffmpeg'in yoludur, ffprobe'unki değil.** Eskiden kullanıcının
+ * ayarladığı ffmpeg yolu doğrudan ffprobe olarak döndürülüyordu: ffmpeg,
+ * `-print_format json -show_streams` gibi ffprobe argümanlarıyla çalıştırılıyor
+ * ve her probe hata veriyordu (DENETIM.md D-20). Doğrusu, özel bir FFmpeg
+ * kurulumunun yanındaki ffprobe'u aramak — aynı derlemeden geldiği için sürüm
+ * uyumu da kendiliğinden sağlanır.
+ *
+ * Not: geri düşülen `ffprobe-static` **FFmpeg 4.4** ikilisi içerir; gömülü
+ * ffmpeg 7.0 ile arasında üç major sürüm fark var ve Apple Silicon'da x86_64
+ * ikilisi Rosetta ile çalışıyor (DENETIM.md D-19).
  */
-export function resolveFfprobeExecutable(override?: string | undefined): string {
-  const trimmed = override?.trim();
+export function resolveFfprobeExecutable(ffmpegBinaryOverride?: string | undefined): string {
+  const trimmed = ffmpegBinaryOverride?.trim();
   if (trimmed && trimmed.length > 0) {
-    return validateExecutablePath(trimmed, "Özel ffprobe");
+    const sibling = path.join(path.dirname(trimmed), ffprobeBinaryName());
+    if (fs.existsSync(sibling)) {
+      return validateExecutablePath(sibling, "Özel ffprobe");
+    }
+    // Yanında ffprobe yoksa gömülüye düş — ffmpeg'i ffprobe sanıp çalıştırmaktan iyidir.
   }
 
   const fromEnv = process.env.LFC_FFPROBE_PATH?.trim();
