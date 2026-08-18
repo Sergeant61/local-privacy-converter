@@ -50,8 +50,10 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Yayınlanan paketin bağımlılık ağacı, CI'da test edilenle aynı olmalı;
+      # --frozen-lockfile bunun tek garantisi (DENETIM.md D-24).
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Set version from tag
         shell: bash
