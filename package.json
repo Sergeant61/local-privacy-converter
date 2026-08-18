@@ -21,7 +21,8 @@
     "dist:mac": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --mac --publish never",
     "dist:win": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --win --publish never",
     "dist:linux": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --linux --publish never",
-    "dist:dir": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --dir --publish never"
+    "dist:dir": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --dir --publish never",
+    "ffmpeg:fetch": "node scripts/prepare-ffmpeg.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

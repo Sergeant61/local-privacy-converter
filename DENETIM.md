@@ -29,12 +29,12 @@ Bulgu ID'leri (`D-01` … `D-24`) sabittir, yeniden numaralandırma.
 |---|---|---|
 | 🔴 Kritik | 1 | **1** |
 | 🟠 Yüksek | 6 | **6** |
-| 🟡 Orta | 17 | **16** |
-| **Toplam** | **24** | **23** |
+| 🟡 Orta | 17 | **17** |
+| **Toplam** | **24** | **24** |
 
-**Açık kalan 1 bulgu:** D-19 (ffprobe sürüm farkı — kısmen ele alındı; bağımlılık ağacında 7.x arm64 ffprobe yok).
+**Açık bulgu kalmadı — 24/24 kapandı.**
 
-Kritik ve yüksek bulguların tamamı, orta bulguların 16'sı kapandı; hepsi gerçek FFmpeg koşumuyla doğrulandı.
+Bulguların tamamı kapandı; hepsi gerçek FFmpeg koşumuyla doğrulandı.
 
 Temel ölçümler: `pnpm typecheck` **6/6 temiz** · `pnpm lint` **0 hata / 2 uyarı** · **190 test geçiyor** (123 ffmpeg-core + 39 media-formats + 28 validators) · CI kapısı **aktif** ve `--frozen-lockfile` ile tekrarlanabilir
 
@@ -208,7 +208,25 @@ Temel ölçümler: `pnpm typecheck` **6/6 temiz** · `pnpm lint` **0 hata / 2 uy
   > [apps/desktop/electron/main.ts:576](apps/desktop/electron/main.ts#L576) — istek `recepozen/file-converter-api` adresine gidiyor, bu depo **HTTP 404** dönüyor. Gerçek depo `Sergeant61/local-privacy-converter` (HTTP 200, v1.1.3). Özellik üretimde tamamen ölü. Yedek URL de ([main.ts:597](apps/desktop/electron/main.ts#L597)) aynı yanlış depoyu gösteriyor.
   > **Ek hata:** [main.ts:592](apps/desktop/electron/main.ts#L592) `hasUpdate = tag !== currentVersion` — semver değil string eşitsizliği. Uzaktaki etiket **eski** olsa bile "güncelleme var" der.
 
-- [ ] **D-19** — ffmpeg 7.0 ile ffprobe 4.x eşleştirilmiş
+- [x] **D-19** — ffmpeg 7.0 ile ffprobe 4.x eşleştirilmiş
+  > **✅ Kapatıldı:** 2026-08-18 · [prepare-ffmpeg.mjs](scripts/prepare-ffmpeg.mjs) · [ffmpeg-manifest.json](scripts/ffmpeg-manifest.json) · [ffmpeg-resolve.ts](apps/desktop/electron/ffmpeg-resolve.ts)
+  > **Belirsizlik çözüldü:** iki agent'ın farklı raporlaması `ffprobe-static@3.1.0`'ın iki ayrı ikili taşımasındandı — `bin/darwin/x64` **4.0.2**, `bin/darwin/arm64` **4.4-tessus**. Asıl sorun ise daha kötüsüydü: `bin/darwin/arm64/` klasöründeki dosya **arm64 bile değil**, x86_64. Yani dizin adı yanlış, çözümleme kodu doğruydu; Apple Silicon'da Rosetta altında çalışıyordu.
+  > **Ölçüm (öncesi):** uygulamanın kendi ürettiği AVIF dosyası kendi ffprobe'uyla okunamıyordu — `moov atom not found / Invalid data found when processing input`, exit 1. Denetimin iddiası doğrulandı.
+  > **Aday taraması (dördü de gerçek dosyalarla ölçüldü):**
+  >
+  > | Aday | ffprobe | Mimari | AVIF | Teslim |
+  > |---|---|---|---|---|
+  > | `ffprobe-static@3.1.0` (eski) | 4.4-tessus | x86_64 | ❌ | tarball |
+  > | `@ffprobe-installer/ffprobe` | 4.4.1 | arm64 | ❌ | tarball |
+  > | `@derhuerst/ffprobe-static` | 6.0 | arm64 | ✅ | indirme, doğrulamasız |
+  > | `ffmpeg-ffprobe-static` | **7.1** | arm64 | ✅ | indirme, doğrulamasız |
+  >
+  > Tarball ile gelen hiçbir paket AVIF okuyamıyor; okuyabilenlerin hiçbiri indirdiğini doğrulamıyor — ikincisi D-24'te kurulan bütünlük güvencesini delerdi.
+  > **Ne yapıldı:** ikili çift npm bağımlılığı olmaktan çıkarıldı. `scripts/ffmpeg-manifest.json` sürümü, release etiketini ve **beş platform için on ikilinin SHA-256'sını** sabitliyor; `prepare-ffmpeg.mjs` indirip doğruluyor, tutmazsa paketleme duruyor. `@ffmpeg-binary/ffmpeg` ve `ffprobe-static` bağımlılıklardan kaldırıldı.
+  > **Yan kazanç:** geliştirme ve paketlenmiş sürüm artık **aynı ikiliyi** kullanıyor; eskiden dev `node_modules`'tan, paketlenmiş sürüm `extra-resources`'tan farklı ikililer alıyordu.
+  > **Ölçüm (sonrası):** paketlenen ikililer `ffmpeg 7.1` ve `ffprobe 7.1`, **ikisi de Mach-O arm64**, aynı derlemeden. Paketlenmiş ffprobe, paketlenmiş ffmpeg'in ürettiği AVIF'i okuyor: `av1 320x240 yuv420p`.
+  > **Beklenmeyen bulgu:** `ffprobe-static@3.1.0` altı platform/mimari için **335 MB** ffprobe ikilisi taşıyor ve electron-builder hepsini paketliyordu — her macOS kullanıcısı yanında Windows ia32 ve Linux ia32 ffprobe götürüyordu. Uygulama **713 MB → 386 MB** düştü.
+  > **Doğrulama:** kodlayıcı/filtre regresyonu yok (uygulamanın kullandığı 16 kodlayıcı ve 9 filtre 7.0 ile 7.1'de birebir aynı) · sağlama toplamı kapısı denendi: uyuşmazlıkta paketleme exit 1 ile duruyor ve bozuk ikili önbellekte bırakılmıyor · bozuk önbellek kopyası fark edilip yeniden indiriliyor · ikinci koşum ağa hiç çıkmıyor (0.6 sn) · typecheck 6/6, lint 0 hata, 190 test · paketlenmiş uygulama başlatıldı, 7 sn ayakta, stderr boş.
   > Gömülü ffmpeg 7.0, ama ffprobe `ffprobe-static` paketinden geliyor ve **üç major sürüm geride**. [ffmpeg-resolve.ts:92](apps/desktop/electron/ffmpeg-resolve.ts#L92) yorumu "hâlen FFmpeg 6.x içerir" diyor, bu da yanlış. Apple Silicon'da x64 ikilisi Rosetta ile çalışıyor. Bir ölçümde bu ffprobe'un uygulamanın kendi ürettiği AVIF'i okuyamadığı görüldü.
   > ⚠️ *İki agent farklı ffprobe sürümü raporladı (4.0.2 ve 4.4) — muhtemelen `node_modules` ile `extra-resources` kopyaları farklı. Ayrıca doğrulanmalı.*
 
