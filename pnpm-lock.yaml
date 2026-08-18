@@ -149,12 +149,14 @@ importers:
   packages/validators:
     specifiers:
       '@lfc/config': workspace:*
+      '@types/node': ^24.10.7
       typescript: ~5.7.3
       zod: ^3.24.2
     dependencies:
       zod: 3.25.76
     devDependencies:
       '@lfc/config': link:../config
+      '@types/node': 24.12.3
       typescript: 5.7.3
 
 packages:
