@@ -33,14 +33,13 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # NOT: --frozen-lockfile olmalıydı, ama depodaki pnpm-lock.yaml hâlâ
-      # lockfileVersion 5.4 (pnpm 7) formatında; beyan edilen pnpm@9.15.4 onu
-      # "not compatible" diyerek yok sayıyor. release.yml de bu yüzden
-      # --no-frozen-lockfile kullanıyor. Kilit dosyası pnpm 9 ile yeniden
-      # üretilene kadar (DENETIM.md D-24) bağımlılıklar her koşumda taze
-      # çözülüyor — kapı çalışır ama tekrarlanabilir değil.
+      # Kilit dosyası pnpm 9.15.4 ile üretildi (DENETIM.md D-24), bu yüzden
+      # --frozen-lockfile kullanılabiliyor: kilit dosyasıyla package.json
+      # çelişirse koşum baştan düşer, sessizce farklı bir bağımlılık ağacı
+      # kurulmaz. pnpm sürümü package.json'daki packageManager alanından
+      # geliyor — action-setup onu okuyor.
       - name: Bağımlılıkları kur
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Tür kontrolü
         run: pnpm typecheck
