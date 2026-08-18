@@ -17,6 +17,8 @@ export {
   parseHwaccels
 } from "./capabilities";
 export { buildFfmpegArgs } from "./build-args";
+export { buildTrimArgs } from "./trim-args";
+export type { TrimArgsInput, TrimArgsResult } from "./trim-args";
 export { ffprobeJsonToSummary, runFfprobeJson } from "./ffprobe";
 export type { FfprobeFileJson, FfprobeFormatJson, FfprobeStreamJson } from "./ffprobe";
 export { runFfmpegJob } from "./run-ffmpeg";
