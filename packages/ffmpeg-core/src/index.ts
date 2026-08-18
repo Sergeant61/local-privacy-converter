@@ -18,6 +18,13 @@ export {
 } from "./capabilities";
 export { buildFfmpegArgs } from "./build-args";
 export {
+  buildLoudnormMeasureArgs,
+  buildLoudnormApplyArgs,
+  buildLoudnormSinglePassArgs,
+  parseLoudnormJson
+} from "./loudnorm";
+export type { LoudnormTargets, LoudnormMeasurement } from "./loudnorm";
+export {
   planImageSizeAttempts,
   applyImageSizeAttempt,
   targetSizeBytes

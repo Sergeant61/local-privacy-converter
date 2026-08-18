@@ -16,7 +16,11 @@ import type { MediaProbeSummary } from "@lfc/types";
 import {
   applyImageSizeAttempt,
   buildFfmpegArgs,
+  buildLoudnormApplyArgs,
+  buildLoudnormMeasureArgs,
+  buildLoudnormSinglePassArgs,
   buildTrimArgs,
+  parseLoudnormJson,
   planImageSizeAttempts,
   targetSizeBytes,
   buildSubtitleExtractArgs,
@@ -1365,15 +1369,33 @@ function wireIpcHandlers() {
         return { ok: false, message: e instanceof Error ? e.message : String(e) };
       }
 
-      const loudnorm = `loudnorm=I=${targetLufs}:TP=${truePeak}:LRA=${lra}:print_format=none`;
-      const args = [
-        "-i", inputPath,
-        "-af", loudnorm,
-        "-y", outputPath
-      ];
-
+      // İki geçiş: önce ölç, sonra ölçülen değerlerle doğrusal düzelt. Tek
+      // geçiş hedefi tahminle vuruyordu — −14 LUFS isteğinde ölçüm −14.5
+      // veriyordu. Ölçüm alınamazsa (ör. tümüyle sessiz girdi) tek geçişe
+      // düşülür; işi hiç yapmamaktansa yaklaşık yapmak yeğdir.
+      const targets = { targetLufs, truePeak, lra };
       const ac = new AbortController();
       currentConvertAbort = ac;
+      updateTrayMenu("Ölçülüyor…");
+      // Ölçüm JSON'u BAŞARILI koşumun stderr'ine basılır; `runFfmpegJob` başarıda
+      // stderr döndürmediği için satırları `onLog` ile topluyoruz.
+      let measureLog = "";
+      const measureRun = await runFfmpegJob(
+        executable,
+        buildLoudnormMeasureArgs(inputPath, targets),
+        {
+          signal: ac.signal,
+          onLog: (line) => {
+            measureLog += line + "\n";
+          }
+        }
+      );
+      const measurement = measureRun.ok ? parseLoudnormJson(measureLog) : null;
+      const args =
+        measurement != null
+          ? buildLoudnormApplyArgs(inputPath, outputPath, targets, measurement)
+          : buildLoudnormSinglePassArgs(inputPath, outputPath, targets);
+
       updateTrayMenu("Dönüştürülüyor…");
       const run = await runFfmpegJob(executable, args, {
         signal: ac.signal,

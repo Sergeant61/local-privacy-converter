@@ -62,20 +62,20 @@ Pre-built installers are available on the [Releases](https://github.com/Sergeant
 | **Audio merge** | Concatenate or mix multiple audio files |
 | **Video merge** | Concatenate multiple video files |
 | **Frame extract** | Pull image frames at a set interval (PNG / JPG) |
-| **GIF creator** | High-quality GIF with two-pass palette optimization |
-| **APNG creator** | Animated PNG with full 32-bit color and alpha transparency |
-| **PDF → Image** | Convert PDF pages to PNG / JPG / PPM via Poppler |
+| **GIF creator** | High-quality GIF with a per-clip generated color palette (`palettegen` + `paletteuse`) |
+| **APNG creator** | Animated PNG; alpha is preserved when the source has it (RGBA in, RGBA out) |
+| **PDF → Image** | Convert PDF pages to PNG / JPEG / TIFF. Requires Poppler on your system (`brew install poppler` / `apt install poppler-utils`) — it is **not** bundled |
 | **Multi-output** | Generate multiple formats from a single input in one run |
-| **Aspect ratio** | Crop or pad video to a target ratio (16:9, 1:1, 9:16, …) |
+| **Aspect ratio** | Center-crop video to a target ratio (16:9, 1:1, 9:16, …) |
 | **Resolution scale** | Upscale or downscale to any preset or custom resolution |
-| **Audio normalize** | EBU R128 loudness normalization (loudnorm filter) |
+| **Audio normalize** | Two-pass EBU R128 loudness normalization (`loudnorm`, linear mode — loudness range is preserved, not compressed) |
 | **Watermark** | Overlay text or image with configurable position and opacity |
 | **Metadata editor** | Read and write ID3 / MP4 tags |
 | **Subtitle extract** | List and extract embedded subtitle streams |
 
 ### Social Media Presets
 
-Ready-made profiles with correct codecs, resolution, bitrate, and file-size limits baked in.
+Ready-made profiles with codec, resolution and file-size limits baked in. Video and audio targets convert the size limit into a bitrate budget; image targets step quality down until the file fits. Sources are fitted to the target frame by center-crop, so the aspect ratio is never stretched.
 
 | Platform | Type | Format | Details |
 |---|---|---|---|
@@ -90,28 +90,28 @@ Ready-made profiles with correct codecs, resolution, bitrate, and file-size limi
 | Telegram Business | Video | MP4 H.264+AAC | 1280×720, 2 GB |
 | Telegram Business | Image | JPEG | 10 MB |
 | Telegram Business | Audio | MP3 | 2 GB |
-| YouTube | 1080p | MP4 H.264+AAC | 1920×1080 |
-| YouTube | 4K | MP4 H.264+AAC | 3840×2160 |
-| TikTok | Video | MP4 H.264+AAC | 1080×1920 |
-| LinkedIn | Video | MP4 H.264+AAC | 1920×1080 |
-| X (Twitter) | Video | MP4 H.264+AAC | 1280×720 |
-| Discord | Video | MP4 H.264+AAC | 1280×720 |
+| YouTube | 1080p | MP4 H.264+AAC | 1920×1080, 128 GB |
+| YouTube | 4K | MP4 H.264+AAC | 3840×2160, 128 GB |
+| TikTok | Video | MP4 H.264+AAC | 1080×1920, 287 MB |
+| LinkedIn | Video | MP4 H.264+AAC | 1920×1080, 5 GB |
+| X (Twitter) | Video | MP4 H.264+AAC | 1920×1080, 512 MB |
+| Discord | Video | MP4 H.264+AAC | 1920×1080, 10 MB (no Nitro) |
 
 ### Power User Features
 - **Custom profiles** — save your own preset (format + quality + resolution + audio + extra args) and reuse it
-- **Extra FFmpeg arguments** — pass raw flags directly to FFmpeg for advanced control
+- **Extra FFmpeg arguments** — pass raw flags directly to FFmpeg; quoted values are kept intact (`-metadata "title=My Movie"`)
 - **Audio channel control** — force mono or stereo output
 - **Quick MP3 extract** — one-click audio strip from any video
 - **Conversion history** — searchable log with JSON / CSV export
-- **Auto update check** — compares against GitHub Releases, shows a download link if a newer version exists
+- **Update check** — compares the running version against GitHub Releases and shows a download link only when the remote version is genuinely newer
 
 ### App Experience
 - **Light / dark theme** — follows system preference, toggleable in-app
 - **Language support** — Turkish 🇹🇷 and English 🇬🇧 (switchable in Settings)
 - **System tray** — minimize to tray, conversion status in tray menu
 - **Taskbar / Dock progress** — live progress bar in macOS Dock and Windows taskbar
-- **Settings page** — output directory, default quality, custom FFmpeg binary path
-- **Completely offline** — all binaries bundled, no telemetry, no network calls
+- **Settings page** — output directory, default quality, and a custom FFmpeg binary chosen through a file dialog (the app never accepts a binary path from the page itself)
+- **Offline by default** — all binaries bundled, no telemetry, no accounts. The only network call is the optional update check below, which contacts the GitHub Releases API and nothing else
 
 ---
 
@@ -200,7 +200,8 @@ git push origin v1.1.0
 │           └── routes/           # One directory per tool page
 ├── packages/
 │   ├── ffmpeg-core/          # FFmpeg/ffprobe spawn helpers, arg builder
-│   ├── media-formats/        # Target profiles, conversion matrix, job hints, UI meta
+│   ├── ffmpeg-presets/       # Stream-copy and container presets
+│   ├── media-formats/        # Target profiles, job spec builder, conversion matrix, UI meta
 │   ├── types/                # Shared TypeScript interfaces
 │   ├── validators/           # Zod schemas for IPC payloads
 │   └── config/               # Shared ESLint / TypeScript config
