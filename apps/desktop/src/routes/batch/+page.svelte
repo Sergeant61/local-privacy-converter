@@ -4,7 +4,7 @@
   import {
     isKnownInputExtension,
     normalizeExtension,
-    targetProfileToJobHints,
+    buildProfileJobSpec,
     getTargetById,
     type TargetProfileId
   } from "@lfc/media-formats";
@@ -151,17 +151,15 @@
     }
   }
 
+  // Ortak kurallayıcı: sosyal presetlerin zorunlu çözünürlüğü ve boyut limiti
+  // burada da geçerli. Eskiden bu ekran ikisini de yok sayıyordu, aynı preset
+  // seçildiği ekrana göre farklı çıktı veriyordu (DENETIM.md D-10).
   function buildSpec(f: BatchFile, outPath: string): ConvertJobSpec {
-    const hints = targetProfileToJobHints(targetProfileId);
-    return {
+    return buildProfileJobSpec(targetProfileId, {
       inputPath: f.path,
       outputPath: outPath,
-      mode: hints.mode,
-      audioOnlyOutput: hints.audioOnlyOutput,
-      videoEncoder: hints.videoEncoder,
-      audioEncoder: hints.audioEncoder,
-      videoHints: { qualityPreset }
-    };
+      qualityPreset
+    });
   }
 
   async function startBatch() {

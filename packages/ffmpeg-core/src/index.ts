@@ -17,6 +17,12 @@ export {
   parseHwaccels
 } from "./capabilities";
 export { buildFfmpegArgs } from "./build-args";
+export {
+  planImageSizeAttempts,
+  applyImageSizeAttempt,
+  targetSizeBytes
+} from "./image-size-plan";
+export type { ImageSizeAttempt, ImageSizePlanInput } from "./image-size-plan";
 export { buildTrimArgs } from "./trim-args";
 export type { TrimArgsInput, TrimArgsResult } from "./trim-args";
 export {

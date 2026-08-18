@@ -13,8 +13,11 @@ protocol.registerSchemesAsPrivileged([
 
 import type { MediaProbeSummary } from "@lfc/types";
 import {
+  applyImageSizeAttempt,
   buildFfmpegArgs,
   buildTrimArgs,
+  planImageSizeAttempts,
+  targetSizeBytes,
   buildSubtitleExtractArgs,
   buildConcatCopyArgs,
   buildConcatListContent,
@@ -108,6 +111,22 @@ app.setName("Local Privacy Converter");
  */
 function escapeFilterPath(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+}
+
+/** Tek kare görüntü çıktısı mı? Boyut limiti bunlarda kademeli sıkıştırmayla uygulanır. */
+const STILL_IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp", "avif", "bmp", "tif", "tiff"]);
+
+function isStillImagePath(outputPath: string): boolean {
+  const ext = outputPath.split(".").pop()?.toLowerCase();
+  return ext !== undefined && STILL_IMAGE_EXTS.has(ext);
+}
+
+async function fileSize(filePath: string): Promise<number | null> {
+  try {
+    return (await fs.promises.stat(filePath)).size;
+  } catch {
+    return null;
+  }
 }
 
 type GuardFailure = { ok: false; message: string };
@@ -469,22 +488,59 @@ function wireIpcHandlers() {
           ? { ...spec, videoHints: { ...spec.videoHints, ...extraHints } }
           : spec;
 
-      const args = buildFfmpegArgs(specForArgs);
       const ac = new AbortController();
       currentConvertAbort = ac;
-      const run = await runFfmpegJob(executable, args, {
-        inputDurationSec: parsed.data.inputDurationSec ?? null,
-        signal: ac.signal,
-        onProgress: (percent) => {
-          if (event.sender.isDestroyed()) return;
-          event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
-          setTaskbarProgress(percent);
-        },
-        onLog: (line) => {
-          if (event.sender.isDestroyed()) return;
-          event.sender.send(RUN_CONVERT_LOG_CHANNEL, { line });
+
+      const runOnce = (jobSpec: typeof specForArgs) =>
+        runFfmpegJob(executable, buildFfmpegArgs(jobSpec), {
+          inputDurationSec: parsed.data.inputDurationSec ?? null,
+          signal: ac.signal,
+          onProgress: (percent) => {
+            if (event.sender.isDestroyed()) return;
+            event.sender.send(RUN_CONVERT_PROGRESS_CHANNEL, { percent });
+            setTaskbarProgress(percent);
+          },
+          onLog: (line) => {
+            if (event.sender.isDestroyed()) return;
+            event.sender.send(RUN_CONVERT_LOG_CHANNEL, { line });
+          }
+        });
+
+      let run = await runOnce(specForArgs);
+
+      // Görüntü çıktısında boyut hedefi bitrate'e çevrilemez — süre yok. Ölç ve
+      // daralt: kalite kademesi düşürülür, tükenirse kare küçültülür
+      // (DENETIM.md D-09). Video/ses tarafı zaten bitrate bütçesiyle hallediliyor.
+      const sizeLimit = targetSizeBytes(specForArgs);
+      if (run.ok && sizeLimit != null && isStillImagePath(specForArgs.outputPath)) {
+        const attempts = planImageSizeAttempts({
+          qualityPreset: specForArgs.videoHints?.qualityPreset,
+          width: specForArgs.videoHints?.width ?? sourceWidth,
+          height: specForArgs.videoHints?.height ?? sourceHeight
+        });
+        let size = await fileSize(specForArgs.outputPath);
+        // İlk deneme zaten koşuldu; sıradakilerden devam et.
+        for (let i = 1; i < attempts.length && size != null && size > sizeLimit; i++) {
+          if (ac.signal.aborted) break;
+          const attempt = attempts[i];
+          if (attempt === undefined) break;
+          const next = await runOnce(applyImageSizeAttempt(specForArgs, attempt));
+          if (!next.ok) break;
+          run = next;
+          size = await fileSize(specForArgs.outputPath);
         }
-      });
+        if (size != null && size > sizeLimit) {
+          currentConvertAbort = null;
+          const mb = (n: number) => (n / (1024 * 1024)).toFixed(2);
+          return {
+            ok: false,
+            message:
+              `Dosya ${mb(sizeLimit)} MB sınırının altına indirilemedi. ` +
+              `En küçük sonuç ${mb(size)} MB olarak kaydedildi.`
+          };
+        }
+      }
+
       currentConvertAbort = null;
       if (run.ok) {
         const outName = parsed.data.spec.outputPath.split(/[/\\]/).pop() ?? "dosya";

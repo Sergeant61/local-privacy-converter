@@ -143,7 +143,10 @@
     outputPath = null;
     outputPreviewUrl = null;
 
-    // keepAspect: height = -2 (proportional), else fixed width only
+    // "En-boy oranını koru" anahtarı gerçekten bir şey yapıyor: kapalıyken
+    // hedef genişliğin 16:9 karşılığı yükseklik olarak dayatılır ve kare
+    // `cover` ile doldurulur. Eskiden iki dal da boştu — anahtar hiçbir şey
+    // yapmıyordu (DENETIM.md D-23).
     const spec = {
       inputPath: filePath,
       outputPath: outPath,
@@ -152,7 +155,7 @@
       audioEncoder,
       videoHints: {
         width,
-        ...(keepAspect ? {} : {}),
+        ...(keepAspect ? {} : { height: Math.round(width / (16 / 9) / 2) * 2, fit: "cover" as const }),
         qualityPreset: "balanced" as const,
       },
     };
