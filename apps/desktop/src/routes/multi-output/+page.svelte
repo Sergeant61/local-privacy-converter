@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
   import { browser } from "$app/environment";
-  import { getTargetsForKind, targetProfileToJobHints } from "@lfc/media-formats";
+  import { buildProfileJobSpec, getTargetsForKind } from "@lfc/media-formats";
   import type { TargetProfile } from "@lfc/media-formats";
   import type { MediaKind } from "@lfc/types";
 
@@ -114,15 +114,12 @@
       jobs[i] = { ...job, status: "running" };
       jobs = [...jobs];
 
-      const hints = targetProfileToJobHints(job.profileId as Parameters<typeof targetProfileToJobHints>[0]);
-      const spec = {
-        inputPath: filePath!,
-        outputPath: job.outputPath,
-        mode: hints.mode,
-        audioOnlyOutput: hints.audioOnlyOutput,
-        videoEncoder: hints.videoEncoder,
-        audioEncoder: hints.audioEncoder
-      };
+      // Ortak kurallayıcı — sosyal presetlerin zorunlu ölçüsü ve boyut limiti
+      // bu ekranda da uygulanır (DENETIM.md D-10).
+      const spec = buildProfileJobSpec(
+        job.profileId as Parameters<typeof buildProfileJobSpec>[0],
+        { inputPath: filePath!, outputPath: job.outputPath }
+      );
 
       const r = await window.lfc.runConvertJob(
         { spec },

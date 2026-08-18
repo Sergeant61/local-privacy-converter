@@ -15,6 +15,8 @@
     getTargetById,
     isKnownInputExtension,
     normalizeExtension,
+    buildProfileJobSpec,
+    parseExtraFfmpegArgs,
     targetProfileToJobHints,
     type TargetProfileId
   } from "@lfc/media-formats";
@@ -393,53 +395,28 @@
     if (!filePath) {
       throw new Error("Dosya yolu yok");
     }
-    const profile = getTargetById(targetProfileId);
-    const hints = targetProfileToJobHints(targetProfileId);
-    const sm = profile?.socialMeta;
-
-    const res = sm?.forcedWidth != null
-      ? { width: sm.forcedWidth, ...(sm.forcedHeight != null ? { height: sm.forcedHeight } : {}) }
-      : resolutionHints();
-
-    const effectiveQuality = sm ? "balanced" : qualityPreset;
-
-    const imageEncoders = new Set(["png", "mjpeg", "libwebp"]);
-    const effectiveSizeMb =
-      sm?.maxFileSizeMb != null && !imageEncoders.has(hints.videoEncoder ?? "")
-        ? sm.maxFileSizeMb
-        : (targetSizeMb != null && targetSizeMb > 0 ? targetSizeMb : undefined);
-
-    const videoEncoder = overrideVideoEncoder !== "" ? overrideVideoEncoder : hints.videoEncoder;
-
-    const effectiveAspectRatio = sm
-      ? undefined
-      : aspectRatioPreset === "original"
+    const res = resolutionHints();
+    const aspect =
+      aspectRatioPreset === "original"
         ? undefined
         : aspectRatioPreset === "custom"
           ? (customAspectRatio.trim() || undefined)
           : aspectRatioPreset;
 
-    const extraTokens = extraFfmpegArgsRaw
-      .trim()
-      .split(/\s+/)
-      .filter((t) => t.length > 0);
-
-    return {
+    // Preset kuralları (zorunlu ölçü, boyut limiti, sabit kalite) artık
+    // `buildProfileJobSpec` içinde — toplu dönüştürme ve çoklu çıktı ekranları
+    // da aynı işlevi çağırıyor (DENETIM.md D-10).
+    return buildProfileJobSpec(targetProfileId, {
       inputPath: filePath,
       outputPath: outPath,
-      mode: hints.mode,
-      audioOnlyOutput: hints.audioOnlyOutput,
-      videoEncoder,
-      audioEncoder: hints.audioEncoder,
-      videoHints: {
-        qualityPreset: effectiveQuality,
-        ...(effectiveSizeMb ? { targetSizeMb: effectiveSizeMb } : {}),
-        ...(effectiveAspectRatio ? { aspectRatio: effectiveAspectRatio } : {}),
-        ...res
-      },
-      ...(extraTokens.length > 0 ? { extraFfmpegArgs: extraTokens } : {}),
-      ...(audioChannels !== "" ? { audioChannels: Number(audioChannels) as 1 | 2 } : {})
-    };
+      qualityPreset,
+      ...(res.width != null ? { width: res.width } : {}),
+      ...(aspect ? { aspectRatio: aspect } : {}),
+      ...(targetSizeMb != null && targetSizeMb > 0 ? { targetSizeMb } : {}),
+      ...(overrideVideoEncoder !== "" ? { videoEncoderOverride: overrideVideoEncoder } : {}),
+      ...(audioChannels !== "" ? { audioChannels: Number(audioChannels) as 1 | 2 } : {}),
+      extraFfmpegArgs: parseExtraFfmpegArgs(extraFfmpegArgsRaw)
+    });
   }
 
   async function cancelConversion() {
