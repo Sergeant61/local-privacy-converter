@@ -76,13 +76,21 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
-          # Collect only distributable file types; skip blockmap / yaml meta
+          # Yalnızca release/<sürüm>/ kökündeki dağıtılabilir dosyalar.
+          #
+          # Burada `**` KULLANILMAZ: electron-builder aynı ağacın altına
+          # win-unpacked/ ve mac-*/ klasörlerini de yazıyor ve `**/*.exe`
+          # oralara da giriyordu. Sonuç olarak v1.1.3 ve v1.3.0 yayınlarında
+          # ffmpeg.exe, ffprobe.exe, esbuild.exe, elevate.exe ve kurulum
+          # programı olmayan çıplak Local.Privacy.Converter.exe (201 MB)
+          # varlık olarak yayımlandı — kullanıcı indirme listesinde gerçek
+          # kurulum programıyla yan yana görüyordu.
           path: |
-            apps/desktop/release/**/*.dmg
-            apps/desktop/release/**/*.zip
-            apps/desktop/release/**/*.exe
-            apps/desktop/release/**/*.AppImage
-            apps/desktop/release/**/*.deb
+            apps/desktop/release/*/*.dmg
+            apps/desktop/release/*/*.zip
+            apps/desktop/release/*/*.exe
+            apps/desktop/release/*/*.AppImage
+            apps/desktop/release/*/*.deb
           if-no-files-found: error
 
   # ── GitHub Release ─────────────────────────────────────────────────────────
