@@ -32,7 +32,9 @@ Bulgu ID'leri (`D-01` … `D-24`) sabittir, yeniden numaralandırma.
 | 🟡 Orta | 17 | **17** |
 | **Toplam** | **24** | **24** |
 
-**Açık bulgu kalmadı — 24/24 kapandı.**
+**Açık bulgu kalmadı — 24/24 kapandı.** Düzeltmeler v1.3.0 ile yayımlandı.
+
+Denetimin kapsamı dışında kalan ve denetim sırasında ortaya çıkan işler [KALAN-ISLER.md](KALAN-ISLER.md) dosyasında sürüyor.
 
 Bulguların tamamı kapandı; hepsi gerçek FFmpeg koşumuyla doğrulandı.
 
