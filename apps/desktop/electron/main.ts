@@ -1,4 +1,6 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
+import https from "node:https";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -12,6 +14,7 @@ protocol.registerSchemesAsPrivileged([
 import type { MediaProbeSummary } from "@lfc/types";
 import {
   buildFfmpegArgs,
+  buildTrimArgs,
   ffprobeJsonToSummary,
   listFfmpegCapabilities,
   probeFfmpegVersion,
@@ -581,7 +584,6 @@ function wireIpcHandlers() {
     > => {
       const currentVersion = app.getVersion();
       return new Promise((resolve) => {
-        const https = require("node:https") as typeof import("node:https");
         const options = {
           hostname: "api.github.com",
           path: "/repos/recepozen/file-converter-api/releases/latest",
@@ -655,7 +657,6 @@ function wireIpcHandlers() {
 
       return await new Promise((resolve) => {
         // Try pdftoppm (poppler-utils)
-        const { spawn } = require("node:child_process") as typeof import("node:child_process");
         const args = [
           "-r", String(dpi),
           `-${format}`,
@@ -1136,21 +1137,11 @@ function wireIpcHandlers() {
         return { ok: false, message: e instanceof Error ? e.message : String(e) };
       }
 
-      if (endSec !== null && endSec <= startSec) {
+      const trim = buildTrimArgs({ inputPath, outputPath, startSec, endSec, streamCopy });
+      if (!trim.ok) {
         return { ok: false, message: "Bitiş zamanı başlangıçtan büyük olmalı." };
       }
-
-      const args: string[] = [];
-      // `-ss` girdi tarafında hızlı aramayı sağlar, ancak zaman damgalarını sıfırlar.
-      // Bu yüzden bitiş noktası `-to` ile değil, süre olarak `-t` ile verilmeli —
-      // aksi halde 3-7 sn aralığı isteyen kullanıcı 7 sn'lik çıktı alır.
-      if (startSec > 0) args.push("-ss", String(startSec));
-      args.push("-i", inputPath);
-      if (endSec !== null) args.push("-t", String(endSec - startSec));
-      if (streamCopy) {
-        args.push("-c", "copy");
-      }
-      args.push("-y", outputPath);
+      const args = trim.args;
 
       const ac = new AbortController();
       currentConvertAbort = ac;

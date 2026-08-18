@@ -15,6 +15,7 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
     "format": "prettier --write \"**/*.{js,ts,svelte,json,md}\"",
     "dist": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --publish never",
     "dist:mac": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --mac --publish never",
@@ -23,8 +24,8 @@
     "dist:dir": "turbo run build && node scripts/prepare-ffmpeg.mjs && pnpm --filter desktop exec electron-builder --dir --publish never"
   },
   "devDependencies": {
-    "@lfc/config": "workspace:*",
     "@eslint/js": "^9.39.2",
+    "@lfc/config": "workspace:*",
     "eslint": "^9.39.2",
     "eslint-plugin-svelte": "^3.14.1",
     "globals": "^16.5.0",
@@ -33,7 +34,8 @@
     "svelte": "^5.46.1",
     "turbo": "^2.7.6",
     "typescript": "~5.7.3",
-    "typescript-eslint": "^8.52.1"
+    "typescript-eslint": "^8.52.1",
+    "vitest": "^4.1.10"
   },
   "packageManager": "pnpm@9.15.4",
   "engines": {
