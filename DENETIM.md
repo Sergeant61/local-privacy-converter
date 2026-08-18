@@ -29,12 +29,14 @@ Bulgu ID'leri (`D-01` … `D-24`) sabittir, yeniden numaralandırma.
 |---|---|---|
 | 🔴 Kritik | 1 | **1** |
 | 🟠 Yüksek | 6 | **6** |
-| 🟡 Orta | 17 | **1** |
-| **Toplam** | **24** | **8** |
+| 🟡 Orta | 17 | **15** |
+| **Toplam** | **24** | **22** |
 
-**Kapatılanlar (18 Ağustos 2026):** D-01 · D-02, D-03, D-04 · D-05, D-06 · D-07 · D-21. Kritik ve yüksek bulguların tamamı kapandı; hepsi gerçek FFmpeg koşumuyla doğrulandı.
+**Açık kalan 2 bulgu:** D-19 (ffprobe sürüm farkı — kısmen ele alındı) · D-24 (kilit dosyası, ayrı PR gerektiriyor).
 
-Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uyarı** · **101 test geçiyor** (73 ffmpeg-core + 28 validators) · CI kapısı **aktif**
+Kritik ve yüksek bulguların tamamı, orta bulguların 15'i kapandı; hepsi gerçek FFmpeg koşumuyla doğrulandı.
+
+Temel ölçümler: `pnpm typecheck` **6/6 temiz** · `pnpm lint` **0 hata / 2 uyarı** · **190 test geçiyor** (123 ffmpeg-core + 39 media-formats + 28 validators) · CI kapısı **aktif**
 
 ---
 
@@ -131,46 +133,78 @@ Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uy
 
 > 17 sosyal medya presetinin tamamı gerçek koşumla sınandı: **17/17 codec ve piksel ölçüsünü tutturdu, 0/17 dosya boyutu iddiasını, 0/12 en-boy oranı iddiasını tutturdu.**
 
-- [ ] **D-08** — Dikey (9:16) presetler en-boy oranını korumuyor
+- [x] **D-08** — Dikey (9:16) presetler en-boy oranını korumuyor
+  > **✅ Kapatıldı:** 2026-08-18 · [build-args.ts](packages/ffmpeg-core/src/build-args.ts) · [types](packages/types/src/index.ts)
+  > **Ne yapıldı:** Yeni `fit` ipucu. Her iki boyut da verildiğinde varsayılan `cover`: kare doldurulur, taşan kenarlar ortadan kırpılır. `contain` sığdırıp siyahla doldurur, `stretch` eski davranışı açıkça isteyenler için durur. Her durumda `setsar=1` — SAR bozulunca oynatıcı kareyi yine yamuk gösteriyordu.
+  > **Doğrulama:** 4:3 kaynaktan 1080×1920 üretilip üç mod yan yana karşılaştırıldı. Eski davranışta daire uzun bir elipse dönüşüyor; `cover` ve `contain` dairesel bırakıyor. Üçünde de `dar=9:16`, `sar=1:1` — yani piksel ölçüsü tek başına ayırt edici değil, içerik ölçüldü. 6 birim testi.
   > Sosyal presetlerde `aspectRatio` bilinçli olarak `undefined` yapıldığı için crop/pad hiç devreye girmiyor; yalnızca `scale=1080:1920` uygulanıyor. Piksel ölçüsü doğru ama SAR bozuluyor — SAR'a saygı gösteren oynatıcıda video dikey değil, yok sayan platformda yatayda ezik. Ölçüm: `social-ig-stories` → 1080x1920 ama `dar=16:9`.
 
-- [ ] **D-09** — Görüntü presetlerinde boyut limiti hiç uygulanmıyor
+- [x] **D-09** — Görüntü presetlerinde boyut limiti hiç uygulanmıyor
+  > **✅ Kapatıldı:** 2026-08-18 · [image-size-plan.ts](packages/ffmpeg-core/src/image-size-plan.ts) · [main.ts](apps/desktop/electron/main.ts)
+  > **Ne yapıldı:** Tek karede süre yok, yani bitrate bütçesi kurulamıyor — "ölç ve daralt" eklendi: kalite kademesi sırayla düşürülür (`high → … → very_small`), tükenirse kare 0.75 / 0.5 / 0.35 çarpanlarıyla küçültülür. İlk deneme her zaman istenen ayardır, yani limit zaten sağlanıyorsa hiçbir şey feda edilmez. Limite inilemezse dosya korunur ama açık hata dönülür.
+  > **Doğrulama (gerçek koşum):** 31.5 MB sıkıştırılamaz PNG, 5 MB limit → eski davranış **12.84 MB**, yeni **3.39 MB**. Ulaşılamaz 0.05 MB limitinde `"5 MB sınırının altına indirilemedi. En küçük sonuç 0.34 MB olarak kaydedildi."` Limit zaten sağlanan durumda `high` kalite korunuyor (1.08 MB). 9 birim testi.
   > `mjpeg`/`png`/`libwebp` encoder'ları `-fs`'ten muaf tutulmuş. WhatsApp 5 MB, Instagram 8 MB, Telegram 10 MB alanları tamamen dekoratif — sadece arayüzde metin olarak gösteriliyor.
 
-- [ ] **D-10** — Aynı preset ekrana göre farklı çıktı veriyor
+- [x] **D-10** — Aynı preset ekrana göre farklı çıktı veriyor
+  > **✅ Kapatıldı:** 2026-08-18 · [job-spec.ts](packages/media-formats/src/job-spec.ts)
+  > **Ne yapıldı:** Preset kuralları (zorunlu ölçü, boyut limiti, sabit kalite, konteyner) tek bir `buildProfileJobSpec` işlevine taşındı; ana dönüştürücü, toplu dönüştürme ve çoklu çıktı ekranlarının üçü de onu çağırıyor. Zorunlu ölçü kullanıcı seçimini eziyor — presetin varlık sebebi bu.
+  > **Doğrulama:** 11 birim testi (zorunlu ölçü, boyut limiti, sabit kalite, override önceliği, geçersiz ölçünün elenmesi).
   > Sosyal preset meta verisi yalnızca `HomeConverter.svelte`'te okunuyor. [batch](apps/desktop/src/routes/batch/+page.svelte) ve [multi-output](apps/desktop/src/routes/multi-output/+page.svelte) ekranları zorunlu çözünürlüğü ve boyut limitini tamamen yok sayıyor.
   > ⚠️ *Kod okumasına dayanıyor; bu ekranlar Electron gerektirdiği için çalıştırılmadı.*
 
-- [ ] **D-11** — Kapak resimli MP3 video sanılıyor
+- [x] **D-11** — Kapak resimli MP3 video sanılıyor
+  > **✅ Kapatıldı:** 2026-08-18 · [probe-kinds.ts](packages/media-formats/src/probe-kinds.ts)
+  > **Ne yapıldı:** Doğru ayrım "ses var mı" değil, görüntü akışının gerçek video mu yoksa gömülü kapak mı olduğu. Kapak + ses → `audio`. Akışı okunamayan dosya da artık `video` sayılmıyor: `audio` en dar hedef kümesini verir ve yanlışlığı erken görünür kılar.
+  > **Doğrulama:** mjpeg + mp3 akışlı kapak resimli MP3 üretilip ffprobe ile doğrulandı; 9 birim testi.
   > [packages/media-formats/src/probe-kinds.ts:24](packages/media-formats/src/probe-kinds.ts#L24) image-only dalını `!hasAudio` şartına bağlıyor. Album art'lı MP3 (mjpeg + mp3 akışı) "video" sınıflanıyor, arayüz 24 video hedefi sunuyor, dönüşüm **0 baytla çöküyor**. Ayrıca akışı okunamayan dosya varsayılan olarak "video" kabul ediliyor (satır 35).
 
-- [ ] **D-12** — README ↔ kod çözünürlük çelişkileri
+- [x] **D-12** — README ↔ kod çözünürlük çelişkileri
+  > **✅ Kapatıldı:** 2026-08-18 · [README.md](README.md)
+  > **Ne yapıldı:** X ve Discord 1920×1080'e düzeltildi; YouTube, TikTok, LinkedIn, X ve Discord için eksik boyut limitleri eklendi (Discord'un 10 MB'ı dahil). Değerler `target-profiles.ts`'ten okunarak yazıldı.
   > X (Twitter) ve Discord: README 1280×720 diyor, [target-profiles.ts](packages/media-formats/src/target-profiles.ts) 1920×1080 kullanıyor. README ayrıca YouTube/TikTok/LinkedIn/X/Discord için boyut limiti yazmıyor, oysa kodda var — Discord'un 10 MB'ı en kritik eksik.
 
 ---
 
 ## 🟡 Orta — argüman üretimi
 
-- [ ] **D-13** — `width: 0` verildiğinde geçerli `height` sessizce yok sayılıyor
+- [x] **D-13** — `width: 0` verildiğinde geçerli `height` sessizce yok sayılıyor
+  > **✅ Kapatıldı:** 2026-08-18 · [build-args.ts](packages/ffmpeg-core/src/build-args.ts) · [validators](packages/validators/src/index.ts)
+  > **Ne yapıldı:** Ölçü sayılmak için pozitif ve sonlu olma şartı kondu; şema da `width`/`height` için üst sınır (16384) ve `fps` için 480 sınırı koyuyor.
+  > **Doğrulama:** `width: 0, height: 360` gerçek koşumda 480×360 üretiyor (öncesinde 640×480, yani kaynak ölçüsü). 3 birim testi.
   > [build-args.ts:28](packages/ffmpeg-core/src/build-args.ts#L28) — `if (width ?? height)`: sıfır nullish değil ama falsy olduğu için scale filtresi hiç eklenmiyor. Kullanıcı 360p ister, orijinal çözünürlükte çıktı alır. Validator width/height/fps için pozitiflik veya üst sınır koymuyor; `fps: 1000` de geçiyor.
 
-- [ ] **D-14** — Video girdisinden tek kare görüntü çıkışı exit 234 veriyor
+- [x] **D-14** — Video girdisinden tek kare görüntü çıkışı exit 234 veriyor
+  > **✅ Kapatıldı:** 2026-08-18 · [build-args.ts](packages/ffmpeg-core/src/build-args.ts)
+  > **Ne yapıldı:** Görüntü dalına `-frames:v 1` eklendi.
+  > **Doğrulama (gerçek koşum):** eski davranışta PNG **exit 234** + diskte 32304 baytlık kısmi dosya, JPEG **exit 234** + 11475 bayt, libwebp ise 25 fps animasyon. Yeni davranışta üçü de exit 0 ve tek kare. 5 birim testi.
   > [build-args.ts:177](packages/ffmpeg-core/src/build-args.ts#L177) görüntü dalında `-frames:v 1` yok. PNG ve JPEG hedefleri ilk kareyi yazıp ikinci karede düşüyor — ama diskte geçerli bir kısmi dosya bırakıyor. Aynı girdiyle `libwebp` başarılı oluyor: üç görüntü hedefi üç farklı davranış.
 
-- [ ] **D-15** — AVIF görüntü dalına düşmüyor, video dalına düşüyor
+- [x] **D-15** — AVIF görüntü dalına düşmüyor, video dalına düşüyor
+  > **✅ Kapatıldı:** 2026-08-18 · [build-args.ts](packages/ffmpeg-core/src/build-args.ts)
+  > **Ne yapıldı:** Görüntü kontrolü artık çıktı uzantısını da tanıyor (`png/jpg/jpeg/webp/avif/bmp/tif/tiff`), yalnızca encoder'a bakmıyor — AVIF `libsvtav1` kullanıyor ve o aynı zamanda geçerli bir video kodlayıcısı.
+  > **Doğrulama (gerçek koşum):** eski davranışta AVIF çıktısı **iki AV1 video akışı** ve 5 saniyelik süre içeriyordu; yeni çıktı tek akış, tek kare, ses yok.
   > Görüntü kontrolü yalnızca png/mjpeg/libwebp'i kapsıyor. Sesli MP4'ten AVIF üretildiğinde `-c:a aac` ekleniyor, `-an` eklenmiyor — sonuç iki AV1 akışlı 5 saniyelik animasyonlu dosya, durağan görüntü değil.
 
-- [ ] **D-16** — Ölü sözleşme alanları: `copyAllStreams` ve `spec.container`
+- [x] **D-16** — Ölü sözleşme alanları: `copyAllStreams` ve `spec.container`
+  > **✅ Kapatıldı:** 2026-08-18 · [build-args.ts](packages/ffmpeg-core/src/build-args.ts) · [job-spec.ts](packages/media-formats/src/job-spec.ts)
+  > **Ne yapıldı:** `copyAllStreams` remux'ta `-map 0` üretiyor. `container` `-f` olarak geçiriliyor ve uzantısız çıktı yolunda ffmpeg muxer adı otomatik doldruluyor — uzantı adı ile muxer adı her zaman aynı değil (`mkv` → matroska, `m4a` → ipod, görüntüler → image2).
+  > **Doğrulama:** 7 birim testi.
   > İkisi de hiçbir yerde okunmuyor. Remux `-map 0` içermediği için ek ses izlerini düşürüyor — oysa `@lfc/types` bu alanı "tüm akışların kopyalanması" diye tanımlıyor. Çıktı formatı yalnızca dosya uzantısından çıkarıldığı için uzantısız yolda dönüşüm hata veriyor.
 
-- [ ] **D-17** — Donanım hızlandırma yalnızca yarım bağlı
+- [x] **D-17** — Donanım hızlandırma yalnızca yarım bağlı
+  > **✅ Kapatıldı:** 2026-08-18 · [build-args.ts](packages/ffmpeg-core/src/build-args.ts) · [main.ts](apps/desktop/electron/main.ts)
+  > **Ne yapıldı:** Donanım kodlayıcısı seçilince çözme tarafı da hızlanıyor (`-hwaccel videotoolbox/cuda/qsv/vaapi`, girdiden önce). Çıktı biçimi bilinçli olarak belirtilmiyor: kareler sistem belleğine iniyor, böylece `-vf` zinciri çalışmaya devam ediyor ve desteklenmeyen girdide ffmpeg yazılım çözmeye kendiliğinden düşüyor. VideoToolbox bitrate'i artık kare alanı × fps × kalite katsayısı ile hesaplanıyor; hedef ölçü yoksa ana süreç ffprobe ile kaynak ölçüsünü dolduruyor.
+  > **Doğrulama:** 7 birim testi; 320×240 çıktı sabit 5 Mbps yerine ölçüye orantılı bitrate alıyor.
   > `capabilities.ts` VideoToolbox'ı doğru tespit ediyor (205 encoder ayrıştırıldı) ama `-hwaccel` argümanlara hiç yansımıyor — decode hızlandırma kullanılmıyor. VideoToolbox encoder'ları ayrıca çözünürlükten bağımsız sabit `-b:v` kullanıyor; 320×240 için savurgan, 4K için düşük.
 
 ---
 
 ## 🟡 Orta — paketleme ve altyapı
 
-- [ ] **D-18** — Güncelleme kontrolü var olmayan bir depoyu sorguluyor
+- [x] **D-18** — Güncelleme kontrolü var olmayan bir depoyu sorguluyor
+  > **✅ Kapatıldı:** 2026-08-18 · [main.ts](apps/desktop/electron/main.ts) · [semver.ts](packages/media-formats/src/semver.ts)
+  > **Ne yapıldı:** Depo adresi `Sergeant61/local-privacy-converter` olarak düzeltildi (yedek URL dahil) ve `package.json` `repository` alanıyla eşleşen tek bir sabite bağlandı. String eşitsizliği yerine sayısal ve ön sürüm duyarlı `isNewerVersion` kullanılıyor.
+  > **Doğrulama:** eski adres **HTTP 404**, yeni adres **HTTP 200** (`tag_name: v1.1.3`). 9 birim testi — `1.10.0 > 1.9.0` (string sıralamasının tersi), kararlı sürüm ön sürümden yeni, ayrıştırılamayan sürümde güncelleme iddia edilmiyor.
   > [apps/desktop/electron/main.ts:576](apps/desktop/electron/main.ts#L576) — istek `recepozen/file-converter-api` adresine gidiyor, bu depo **HTTP 404** dönüyor. Gerçek depo `Sergeant61/local-privacy-converter` (HTTP 200, v1.1.3). Özellik üretimde tamamen ölü. Yedek URL de ([main.ts:597](apps/desktop/electron/main.ts#L597)) aynı yanlış depoyu gösteriyor.
   > **Ek hata:** [main.ts:592](apps/desktop/electron/main.ts#L592) `hasUpdate = tag !== currentVersion` — semver değil string eşitsizliği. Uzaktaki etiket **eski** olsa bile "güncelleme var" der.
 
@@ -178,7 +212,9 @@ Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uy
   > Gömülü ffmpeg 7.0, ama ffprobe `ffprobe-static` paketinden geliyor ve **üç major sürüm geride**. [ffmpeg-resolve.ts:92](apps/desktop/electron/ffmpeg-resolve.ts#L92) yorumu "hâlen FFmpeg 6.x içerir" diyor, bu da yanlış. Apple Silicon'da x64 ikilisi Rosetta ile çalışıyor. Bir ölçümde bu ffprobe'un uygulamanın kendi ürettiği AVIF'i okuyamadığı görüldü.
   > ⚠️ *İki agent farklı ffprobe sürümü raporladı (4.0.2 ve 4.4) — muhtemelen `node_modules` ile `extra-resources` kopyaları farklı. Ayrıca doğrulanmalı.*
 
-- [ ] **D-20** — Metadata okuma ffmpeg yolunu ffprobe sanıyor
+- [x] **D-20** — Metadata okuma ffmpeg yolunu ffprobe sanıyor
+  > **✅ Kapatıldı:** 2026-08-18 · [ffmpeg-resolve.ts](apps/desktop/electron/ffmpeg-resolve.ts)
+  > **Ne yapıldı:** Parametrenin ffmpeg yolu olduğu açıkça belgelendi ve semantiği düzeltildi: artık o yolun **yanındaki** ffprobe aranıyor. Aynı derlemeden geldiği için sürüm uyumu da kendiliğinden sağlanıyor; yanında ffprobe yoksa gömülüye düşülüyor. Böylece ffmpeg'i ffprobe sanıp `-print_format json` ile çalıştırma yolu tümüyle kapandı ve altyazı probe'uyla tutarsızlık giderildi.
   > [apps/desktop/electron/main.ts:1342](apps/desktop/electron/main.ts#L1342) — `resolveFfprobeExecutable(lpcSettings.ffmpegBinary)`; kullanıcının ayarladığı **ffmpeg** yolu ffprobe override'ı olarak geçiriliyor. Altyazı probe'u ([main.ts:1030](apps/desktop/electron/main.ts#L1030)) doğru şekilde `undefined` geçiyor — tutarsızlık kodun kendi içinde.
 
 - [x] **D-21** — Yayın hattında hiçbir kalite kapısı yok
@@ -189,10 +225,14 @@ Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uy
   > [.github/workflows/release.yml](.github/workflows/release.yml) yalnızca sürüm etiketiyle tetikleniyor ve typecheck/lint/test çalıştırmadan doğrudan paketleyip yayınlıyor. PR veya push üzerinde çalışan CI hiç yok. Şu an `pnpm lint` **23 hata / 2 uyarı** veriyor ve bunu yakalayan hiçbir şey yok. Repoda **0 test dosyası** var.
   > **Not:** Bu denetimde bulunan kırık özelliklerin tamamı tür kontrolünden temiz geçiyor — ve tamamı tek bir `buildFfmpegArgs` anlık görüntü testiyle yakalanabilirdi.
 
-- [ ] **D-22** — Ölü paketler: `@lfc/auth` ve `@lfc/billing`
+- [x] **D-22** — Ölü paketler: `@lfc/auth` ve `@lfc/billing`
+  > **✅ Kapatıldı:** 2026-08-18 · `packages/auth` ve `packages/billing` silindi. Depoda sıfır import ediliyorlardı; `pnpm typecheck`, `pnpm lint`, `pnpm test` ve `pnpm build` silmeden sonra da temiz.
   > Sıfır import eden 64 satırlık stub'lar; ikisi de sabit değer döndürüyor. Ayrıca hesap ve ücretli katman altyapısı ima ederek uygulamanın "hesapsız, tamamen çevrimdışı" konumlandırmasıyla çelişiyorlar.
 
-- [ ] **D-23** — Arayüzde işlevsiz kontroller
+- [x] **D-23** — Arayüzde işlevsiz kontroller
+  > **✅ Kapatıldı:** 2026-08-18 · [resolution/+page.svelte](apps/desktop/src/routes/resolution/+page.svelte) · [extra-args.ts](packages/media-formats/src/extra-args.ts)
+  > **Ne yapıldı:** "En-boy oranını koru" anahtarı artık gerçekten bir şey yapıyor: kapalıyken hedef genişliğin 16:9 karşılığı yükseklik dayatılıyor ve kare `cover` ile dolduruluyor. Ek FFmpeg argümanları `parseExtraFfmpegArgs` ile bölünüyor — tek/çift tırnak grupları ve ters bölü kaçırma destekleniyor, değişken genişletme ve boru bilinçli olarak yok.
+  > **Doğrulama:** 7 birim testi; `-metadata "title=My Movie"` artık iki argüman.
   > [routes/resolution/+page.svelte:155](apps/desktop/src/routes/resolution/+page.svelte#L155) — `...(keepAspect ? {} : {})`, iki dal da boş. "En-boy oranını koru" anahtarı **hiçbir şey yapmıyor**. Ayrıca extra FFmpeg argümanları alanı `split(/\s+/)` ile bölündüğü ve tırnak desteklemediği için boşluk içeren hiçbir değer yazılamıyor (ör. `-metadata title=My Movie`).
 
 - [ ] **D-24** — Kilit dosyası beyan edilen paket yöneticisiyle uyumsuz
@@ -227,17 +267,17 @@ Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uy
 
 ## 📝 README düzeltmeleri
 
-Ölçülen davranışa uymayan iddialar. *(Ayrı bulgu numarası verilmedi; belge takibi için liste.)*
+Ölçülen davranışa uymayan iddialar. **✅ Tamamı 2026-08-18'de düzeltildi.**
 
-- [ ] `README.md:69` — "Crop **or pad**": pad desteği kodda hiç yok, crop da çalışmıyor (D-02)
-- [ ] `README.md:65` — GIF "**two-pass** palette optimization": tek geçiş `filter_complex`. `TODO.md:46` da "tek geçişte" diyor
-- [ ] `README.md:66` — APNG "full **32-bit** color": alfa'lı kaynakta rgba korunuyor ✅ ama opak kaynakta rgb24; koşulsuz doğru değil
-- [ ] `README.md:71` — "EBU R128 loudness normalization": doğru filtre ama **tek geçiş**; ölçüm −14.5 LUFS (hedef −14). İki geçiş (measure→apply) daha doğru
-- [ ] `README.md:67` — PDF "via Poppler": `pdftoppm` ne sistemde ne pakette var, kurulum notu da yok. Handler ENOENT'i yakalayıp düzgün mesaj veriyor (çökmüyor) ama araç fiilen ölü
-- [ ] `README.md:114` — "Completely offline — **no network calls**": güncelleme kontrolü GitHub API'ye HTTPS isteği atıyor. `README.md:106` zaten "Auto update check" diyor — iki madde çelişiyor
-- [ ] `README.md:97-98` — X ve Discord çözünürlükleri kodla çelişiyor (D-12)
-- [ ] `README.md:78` — "correct codecs, resolution, **bitrate**, and file-size limits baked in": bitrate kontrolü hiç yok (sabit CRF 23), boyut limiti bozuk (D-04)
-- [ ] Proje yapısı bölümü 5 paket belgeliyor, repoda 8 paket var
+- [x] `README.md:69` — "Crop **or pad**" → "Center-crop"; en-boy oranı aracı yalnızca kırpıyor. (Çözünürlük aracında dolgu artık `fit: contain` ile mevcut.)
+- [x] `README.md:65` — GIF "**two-pass** palette optimization" → tek geçişte üretilen palet olduğu yazıldı (`palettegen` + `paletteuse`)
+- [x] `README.md:66` — APNG "full **32-bit** color" → "alfa kaynakta varsa korunur"; opak kaynakta rgb24 çıkıyor
+- [x] `README.md:71` — "EBU R128 loudness normalization" → **gerçekten iki geçişli yapıldı** (yalnızca metin değişmedi). Ölçüm: geniş dinamikli kaynakta tek geçiş −14.34 LUFS ve LRA 1.90 → 2.00 (`normalization_type: dynamic`, yani dinamikler sıkıştırılıyor); iki geçiş −14.02 LUFS ve LRA 1.90 → 1.90 (`linear=true`, dinamikler korunuyor). Sapma 0.34 LU → **0.02 LU**. Bedeli: fazladan bir tam çözme geçişi.
+- [x] `README.md:67` — PDF "via Poppler" → Poppler'ın paketlenmediği ve kurulum komutu (`brew install poppler` / `apt install poppler-utils`) yazıldı
+- [x] `README.md:114` — "Completely offline — **no network calls**" → "Offline by default"; tek ağ çağrısının isteğe bağlı güncelleme kontrolü olduğu açıkça yazıldı, iki madde arasındaki çelişki giderildi
+- [x] `README.md:97-98` — X ve Discord çözünürlükleri koda göre düzeltildi (D-12)
+- [x] `README.md:78` — "correct codecs, resolution, **bitrate**, and file-size limits baked in" → artık **doğru**: video/ses boyut limiti bitrate bütçesine çevriliyor (D-04), görüntü limiti kademeli sıkıştırmayla uygulanıyor (D-09), çerçeveye oturtma kırpmayla yapılıyor (D-08). Metin bunu anlatacak şekilde yazıldı
+- [x] Proje yapısı bölümü — `ffmpeg-presets` eklendi; `auth` ve `billing` silindiği için (D-22) belgelenen ve var olan paket sayısı artık eşleşiyor
 
 ---
 
