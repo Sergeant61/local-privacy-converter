@@ -53,8 +53,16 @@ export interface VideoTranscodeHints {
   stripVideo?: boolean;
   /** UI kalite ön ayarı — transcode bitrate/CRF seçimine yansır. */
   qualityPreset?: "high" | "compatible" | "balanced" | "small" | "very_small";
-  /** Hedef çıktı boyutu (MB). Ayarlandığında FFmpeg'e -fs ile iletilir. */
+  /**
+   * Hedef çıktı boyutu (MB). `sourceDurationSec` ile birlikte hedef bitrate'e çevrilir.
+   * Süre bilinmiyorsa kısıt uygulanmaz — dosyayı kırpmaktansa sınırı aşmak yeğdir.
+   */
   targetSizeMb?: number;
+  /**
+   * Kaynak medyanın saniye cinsinden süresi (ffprobe'dan). `targetSizeMb` verildiğinde
+   * bitrate bütçesini hesaplamak için kullanılır; main process IPC'deki değerden doldurur.
+   */
+  sourceDurationSec?: number;
   /** Hedef en-boy oranı "W:H" formatında (ör. "16:9"). Crop filter ile uygulanır. */
   aspectRatio?: string;
 }

@@ -378,7 +378,18 @@ function wireIpcHandlers() {
         };
       }
 
-      const args = buildFfmpegArgs(parsed.data.spec);
+      // Hedef boyut bitrate'e çevrilebilsin diye kaynak süresini spec'e taşı.
+      // Süre yoksa build-args boyut kısıtını hiç uygulamaz (kırpma yerine tam dosya).
+      const durationSec = parsed.data.inputDurationSec ?? null;
+      const specForArgs =
+        durationSec != null && parsed.data.spec.videoHints?.targetSizeMb != null
+          ? {
+              ...parsed.data.spec,
+              videoHints: { ...parsed.data.spec.videoHints, sourceDurationSec: durationSec }
+            }
+          : parsed.data.spec;
+
+      const args = buildFfmpegArgs(specForArgs);
       const ac = new AbortController();
       currentConvertAbort = ac;
       const run = await runFfmpegJob(executable, args, {
@@ -1125,10 +1136,17 @@ function wireIpcHandlers() {
         return { ok: false, message: e instanceof Error ? e.message : String(e) };
       }
 
+      if (endSec !== null && endSec <= startSec) {
+        return { ok: false, message: "Bitiş zamanı başlangıçtan büyük olmalı." };
+      }
+
       const args: string[] = [];
+      // `-ss` girdi tarafında hızlı aramayı sağlar, ancak zaman damgalarını sıfırlar.
+      // Bu yüzden bitiş noktası `-to` ile değil, süre olarak `-t` ile verilmeli —
+      // aksi halde 3-7 sn aralığı isteyen kullanıcı 7 sn'lik çıktı alır.
       if (startSec > 0) args.push("-ss", String(startSec));
       args.push("-i", inputPath);
-      if (endSec !== null) args.push("-to", String(endSec));
+      if (endSec !== null) args.push("-t", String(endSec - startSec));
       if (streamCopy) {
         args.push("-c", "copy");
       }

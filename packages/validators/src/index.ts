@@ -102,6 +102,7 @@ const videoTranscodeHintsSchema = z.object({
   stripVideo: z.boolean().optional(),
   qualityPreset: z.enum(["high", "compatible", "balanced", "small", "very_small"]).optional(),
   targetSizeMb: z.number().positive().optional(),
+  sourceDurationSec: z.number().positive().finite().optional(),
   aspectRatio: z.string().optional()
 });
 

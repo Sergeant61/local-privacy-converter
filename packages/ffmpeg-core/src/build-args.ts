@@ -12,9 +12,11 @@ function aspectRatioCropFilter(ratio: string): string | null {
   const aw = Number(parts[0]);
   const ah = Number(parts[1]);
   if (!Number.isFinite(aw) || !Number.isFinite(ah) || aw <= 0 || ah <= 0) return null;
-  // Crop to center: compare iw*ah vs ih*aw to detect if source is wider than target
-  const wider = `gt(iw*${ah},ih*${aw})`;
-  return `crop=if(${wider},ih*${aw}/${ah},iw):if(${wider},ih,iw*${ah}/${aw})`;
+  // Crop to center: compare iw*ah vs ih*aw to detect if source is wider than target.
+  // Virgüller `\,` ile kaçırılmalı: filtergraph içinde çıplak virgül filtre ayracıdır ve
+  // if() ifadesini ortadan bölerek "No such filter" hatasına yol açar.
+  const wider = `gt(iw*${ah}\\,ih*${aw})`;
+  return `crop=if(${wider}\\,ih*${aw}/${ah}\\,iw):if(${wider}\\,ih\\,iw*${ah}/${aw})`;
 }
 
 function vfScale(width?: number, height?: number, fps?: number, aspectRatio?: string): string[] {
@@ -119,31 +121,126 @@ function videoArgsForEncoder(
   }
 }
 
-function pickAudioEncoderArgs(
+/** Kalite ön ayarının ses bitrate etiketi. Kayıpsız/kopya kodlayıcılarda null. */
+function audioBitrateLabel(
   encoder: ConvertJobSpec["audioEncoder"],
   q: QualityTier
-): string[] {
+): string | null {
   switch (encoder ?? "aac") {
     case "copy":
-      return ["-c:a", "copy"];
+      return null;
     case "libmp3lame":
-      return ["-c:a", "libmp3lame", "-b:a", crf(["320k", "256k", "192k", "128k", "96k"], q)];
+      return crf(["320k", "256k", "192k", "128k", "96k"], q);
     case "libopus":
-      return ["-c:a", "libopus", "-b:a", crf(["256k", "192k", "128k", "96k", "64k"], q)];
+      return crf(["256k", "192k", "128k", "96k", "64k"], q);
     case "pcm_s16le":
-      return ["-c:a", "pcm_s16le"];
+      return null;
     case "flac":
-      return ["-c:a", "flac"];
+      return null;
     case "aac":
     default:
-      return ["-c:a", "aac", "-b:a", crf(["256k", "224k", "160k", "128k", "96k"], q)];
+      return crf(["256k", "224k", "160k", "128k", "96k"], q);
   }
 }
 
-function targetSizeArgs(spec: ConvertJobSpec): string[] {
+/** `-b:a` destekleyen (kayıplı) kodlayıcılar — boyut bütçesi bunlarda ayarlanabilir. */
+function supportsAudioBitrate(encoder: ConvertJobSpec["audioEncoder"]): boolean {
+  const e = encoder ?? "aac";
+  return e === "aac" || e === "libmp3lame" || e === "libopus";
+}
+
+function labelToBps(label: string | null, fallbackBps: number): number {
+  if (label == null) return fallbackBps;
+  const m = /^(\d+)k$/.exec(label);
+  return m ? Number(m[1]) * 1000 : fallbackBps;
+}
+
+/** Kayıpsız/kopya ses için bütçeden düşülecek temkinli tahmin (bit/sn). */
+const LOSSLESS_AUDIO_ESTIMATE_BPS = 1_000_000;
+/** Konteyner başlıkları ve muxing payı için ayrılan oran. */
+const CONTAINER_OVERHEAD_RATIO = 0.97;
+/** Bunun altına inersek çıktı zaten izlenemez; sınırı aşmayı göze alıp burada duruyoruz. */
+const MIN_VIDEO_BPS = 100_000;
+const MIN_AUDIO_BPS = 32_000;
+
+function audioBitrateBps(encoder: ConvertJobSpec["audioEncoder"], q: QualityTier): number {
+  return labelToBps(audioBitrateLabel(encoder, q), LOSSLESS_AUDIO_ESTIMATE_BPS);
+}
+
+function pickAudioEncoderArgs(
+  encoder: ConvertJobSpec["audioEncoder"],
+  q: QualityTier,
+  overrideBps?: number
+): string[] {
+  const e = encoder ?? "aac";
+  if (e === "copy") return ["-c:a", "copy"];
+  if (e === "pcm_s16le") return ["-c:a", "pcm_s16le"];
+  if (e === "flac") return ["-c:a", "flac"];
+
+  const label = audioBitrateLabel(e, q);
+  const bitrate =
+    overrideBps != null && supportsAudioBitrate(e)
+      ? String(Math.max(MIN_AUDIO_BPS, Math.min(overrideBps, labelToBps(label, overrideBps))))
+      : (label ?? "160k");
+  return ["-c:a", e, "-b:a", bitrate];
+}
+
+/**
+ * Hedef dosya boyutunun toplam bit bütçesi. Süre bilinmiyorsa null.
+ *
+ * `-fs` bilinçli olarak KULLANILMIYOR: o bayrak sınıra ulaşınca yazmayı keser, yani videoyu
+ * sessizce kırpar (30 sn kaynak → 3 sn çıktı, exit 0) ve moov atomu sonradan yazıldığı için
+ * dosya yine sınırın üstünde kalır. Yani hem içeriği bozar hem amacına ulaşmaz.
+ */
+function totalBitBudget(spec: ConvertJobSpec): number | null {
   const mb = spec.videoHints?.targetSizeMb;
-  if (mb == null || mb <= 0) return [];
-  return ["-fs", String(Math.round(mb * 1024 * 1024))];
+  const dur = spec.videoHints?.sourceDurationSec;
+  if (mb == null || mb <= 0) return null;
+  if (dur == null || !Number.isFinite(dur) || dur <= 0) return null;
+  return mb * 1024 * 1024 * 8 * CONTAINER_OVERHEAD_RATIO;
+}
+
+/** Boyut bütçesinden video bitrate'i (bit/sn). Hesaplanamıyorsa null. */
+function targetVideoBitrateBps(spec: ConvertJobSpec, q: QualityTier): number | null {
+  const budget = totalBitBudget(spec);
+  const dur = spec.videoHints?.sourceDurationSec;
+  if (budget == null || dur == null) return null;
+  const videoBps = Math.floor(budget / dur - audioBitrateBps(spec.audioEncoder, q));
+  return Math.max(MIN_VIDEO_BPS, videoBps);
+}
+
+/** Yalnızca ses çıktısında boyut bütçesinden ses bitrate'i (bit/sn). */
+function targetAudioBitrateBps(spec: ConvertJobSpec): number | null {
+  const budget = totalBitBudget(spec);
+  const dur = spec.videoHints?.sourceDurationSec;
+  if (budget == null || dur == null) return null;
+  return Math.floor(budget / dur);
+}
+
+/** Sabit bitrate hedefiyle kodlama argümanları — CRF yerine geçer, onunla birlikte kullanılmaz. */
+function videoArgsForTargetBitrate(
+  encoder: NonNullable<ConvertJobSpec["videoEncoder"]>,
+  bps: number
+): string[] {
+  const b = String(bps);
+  const maxrate = String(Math.floor(bps * 1.45));
+  const bufsize = String(Math.floor(bps * 2));
+
+  switch (encoder) {
+    case "libx264":
+    case "libx265":
+      return ["-c:v", encoder, "-b:v", b, "-maxrate", maxrate, "-bufsize", bufsize, "-preset", "medium"];
+    case "libsvtav1":
+      return ["-c:v", "libsvtav1", "-b:v", b, "-preset", "8"];
+    case "libvpx-vp9":
+      return ["-c:v", "libvpx-vp9", "-b:v", b, "-maxrate", maxrate, "-bufsize", bufsize];
+    // VideoToolbox -maxrate/-bufsize kabul etmiyor; yalnız hedef bitrate verilir.
+    case "h264_videotoolbox":
+    case "hevc_videotoolbox":
+      return ["-c:v", encoder, "-b:v", b];
+    default:
+      return ["-c:v", encoder, "-b:v", b, "-maxrate", maxrate, "-bufsize", bufsize];
+  }
 }
 
 /** Yüksek seviye iş tanımından `spawn` uyumlu argüman dizisi üretir (saf; Node API’si yok). */
@@ -162,18 +259,19 @@ export function buildFfmpegArgs(spec: ConvertJobSpec): string[] {
   }
 
   const q = pickQualityTier(spec);
-  const fsA = targetSizeArgs(spec);
   const audioOnlyOutput =
     spec.audioOnlyOutput === true || (spec.videoHints?.stripVideo ?? false) === true;
 
   if (audioOnlyOutput) {
+    const audioBudgetBps = targetAudioBitrateBps(spec);
     args.push("-vn");
-    args.push(...pickAudioEncoderArgs(spec.audioEncoder, q));
+    args.push(...pickAudioEncoderArgs(spec.audioEncoder, q, audioBudgetBps ?? undefined));
     args.push(...acArgs);
-    args.push(...fsA, ...extra, spec.outputPath);
+    args.push(...extra, spec.outputPath);
     return args;
   }
 
+  // Görüntü çıktısında boyut bütçesi anlamsız — tek kare zaten süreye bağlı değil.
   if (
     spec.videoEncoder === "png" ||
     spec.videoEncoder === "mjpeg" ||
@@ -182,14 +280,21 @@ export function buildFfmpegArgs(spec: ConvertJobSpec): string[] {
     args.push(...vfScale(spec.videoHints?.width, spec.videoHints?.height, spec.videoHints?.fps, spec.videoHints?.aspectRatio));
     args.push(...videoArgsForEncoder(spec.videoEncoder, q));
     args.push("-an");
-    args.push(...fsA, ...extra, spec.outputPath);
+    args.push(...extra, spec.outputPath);
     return args;
   }
 
+  const videoEncoder = spec.videoEncoder ?? "libx264";
+  const videoBudgetBps = targetVideoBitrateBps(spec, q);
+
   args.push(...vfScale(spec.videoHints?.width, spec.videoHints?.height, spec.videoHints?.fps, spec.videoHints?.aspectRatio));
-  args.push(...videoArgsForEncoder(spec.videoEncoder ?? "libx264", q));
+  args.push(
+    ...(videoBudgetBps != null
+      ? videoArgsForTargetBitrate(videoEncoder, videoBudgetBps)
+      : videoArgsForEncoder(videoEncoder, q))
+  );
   args.push(...pickAudioEncoderArgs(spec.audioEncoder, q));
   args.push(...acArgs);
-  args.push(...fsA, ...extra, spec.outputPath);
+  args.push(...extra, spec.outputPath);
   return args;
 }
