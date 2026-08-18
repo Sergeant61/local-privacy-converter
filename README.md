@@ -111,7 +111,7 @@ Ready-made profiles with codec, resolution and file-size limits baked in. Video 
 - **System tray** — minimize to tray, conversion status in tray menu
 - **Taskbar / Dock progress** — live progress bar in macOS Dock and Windows taskbar
 - **Settings page** — output directory, default quality, and a custom FFmpeg binary chosen through a file dialog (the app never accepts a binary path from the page itself)
-- **Offline by default** — all binaries bundled, no telemetry, no accounts. The only network call is the optional update check below, which contacts the GitHub Releases API and nothing else
+- **Offline by default** — all binaries bundled, no telemetry, no accounts. The only network call the *app* makes is the optional update check below, which contacts the GitHub Releases API and nothing else. (Building from source downloads the FFmpeg binaries once; see below.)
 
 ---
 
@@ -144,6 +144,29 @@ pnpm install
 CI installs with `--frozen-lockfile`, so a change to any `package.json` must be
 committed together with the updated `pnpm-lock.yaml` or the build fails.
 
+### FFmpeg binaries
+
+`ffmpeg` and `ffprobe` are not npm dependencies. They are fetched once from a
+pinned GitHub release and verified against SHA-256 checksums committed in
+[`scripts/ffmpeg-manifest.json`](scripts/ffmpeg-manifest.json):
+
+```bash
+pnpm ffmpeg:fetch
+```
+
+`pnpm dev` and every `pnpm dist:*` target run this for you. Downloads are cached
+under `node_modules/.cache/ffmpeg-bin/<release-tag>/`, so it only hits the
+network the first time. **If a downloaded binary does not match its checksum,
+packaging stops** rather than shipping an unverified executable.
+
+Both binaries come from the same FFmpeg build, so `ffprobe` can always read what
+`ffmpeg` just wrote. To move to a new FFmpeg release, update the tag and URL in
+the manifest and regenerate the checksums:
+
+```bash
+node scripts/verify-ffmpeg-manifest.mjs --update
+```
+
 ### Run in development mode
 
 ```bash
@@ -171,8 +194,12 @@ pnpm lint
 ### Stage FFmpeg binaries (required before packaging)
 
 ```bash
-node scripts/prepare-ffmpeg.mjs
+pnpm ffmpeg:fetch
 ```
+
+Fetches and checksum-verifies the FFmpeg 7.1 `ffmpeg`/`ffprobe` pair into
+`apps/desktop/extra-resources/ffmpeg/`. The `pnpm dist:*` targets already do
+this; run it by hand only when calling `electron-builder` directly.
 
 ### Package for the current platform
 
@@ -230,7 +257,7 @@ git push origin v1.1.0
 |---|---|
 | Desktop shell | [Electron](https://electronjs.org) 39 |
 | UI framework | [SvelteKit](https://kit.svelte.dev) 2 + Svelte 5 (runes) |
-| Media processing | [FFmpeg](https://ffmpeg.org) 7.x (bundled binary) |
+| Media processing | [FFmpeg](https://ffmpeg.org) 7.1 — `ffmpeg` and `ffprobe` from the same build, bundled |
 | i18n | [svelte-i18n](https://github.com/kaisermann/svelte-i18n) 4 |
 | Validation | [Zod](https://zod.dev) |
 | Build system | [Turbo](https://turbo.build) + [pnpm workspaces](https://pnpm.io/workspaces) |

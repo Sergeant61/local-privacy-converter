@@ -1,10 +1,24 @@
-import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 
 import { app } from "electron";
 
-const require = createRequire(import.meta.url);
+/**
+ * Gömülü ikililerin bulunduğu tek dizin (DENETIM.md D-19).
+ *
+ * Paketlenmiş uygulamada `resources/ffmpeg/`, geliştirmede `extra-resources/ffmpeg/`.
+ * İkisini de `scripts/prepare-ffmpeg.mjs` doldurur, aynı manifestten ve aynı
+ * sağlama toplamı kontrolünden geçerek. Böylece geliştirmede çalışan ffmpeg ile
+ * kullanıcıya giden ffmpeg aynı ikili olur — eskiden değildi.
+ */
+function bundledBinaryDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "ffmpeg")
+    : path.join(app.getAppPath(), "extra-resources", "ffmpeg");
+}
+
+const FETCH_HINT =
+  "Gömülü ikililer yok. `pnpm ffmpeg:fetch` çalıştırın (sürüm ve sağlama toplamları scripts/ffmpeg-manifest.json içinde sabit).";
 
 /**
  * Kullanıcı tarafından seçilmiş bir ikili yolunu doğrular.
@@ -40,50 +54,8 @@ function ffmpegBinaryName(): string {
   return process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
 }
 
-/** @ffmpeg-binary/ffmpeg (FFmpeg 7.x) ile eşleşen platform paketi adı. */
-function ffmpegBinaryPlatformPackage(): string | null {
-  const { platform, arch: cpu } = process;
-  if (platform === "darwin" && cpu === "arm64") {
-    return "@ffmpeg-binary/darwin-arm64";
-  }
-  if (platform === "darwin" && cpu === "x64") {
-    return "@ffmpeg-binary/darwin-x64";
-  }
-  if (platform === "linux" && cpu === "arm64") {
-    return "@ffmpeg-binary/linux-arm64";
-  }
-  if (platform === "linux" && cpu === "x64") {
-    return "@ffmpeg-binary/linux-x64";
-  }
-  if (platform === "win32" && cpu === "x64") {
-    return "@ffmpeg-binary/win32-x64";
-  }
-  return null;
-}
-
-function resolveFfmpegFromFfmpegBinaryPackage(): string | null {
-  const pkg = ffmpegBinaryPlatformPackage();
-  if (pkg === null) {
-    return null;
-  }
-  try {
-    const metaPkgJson = require.resolve("@ffmpeg-binary/ffmpeg/package.json");
-    const nestedRequire = createRequire(metaPkgJson);
-    const platformPkgJson = nestedRequire.resolve(`${pkg}/package.json`);
-    const dir = path.dirname(platformPkgJson);
-    const candidate = path.join(dir, ffmpegBinaryName());
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  } catch {
-    /* İkili kurulu değil veya isteğe bağlı bağımlılık yüklenmedi */
-  }
-  return null;
-}
-
 /**
- * FFmpeg yolu: kullanıcı geçersiz kılma → LFC_FFMPEG_PATH → (paketliyse) resources/ffmpeg
- * → @ffmpeg-binary (FFmpeg 7.x gömülü ikili).
+ * FFmpeg yolu: kullanıcı geçersiz kılma → LFC_FFMPEG_PATH → gömülü ikili (7.1).
  */
 export function resolveFfmpegExecutable(override?: string | undefined): string {
   const trimmed = override?.trim();
@@ -96,21 +68,12 @@ export function resolveFfmpegExecutable(override?: string | undefined): string {
     return validateExecutablePath(fromEnv, "LFC_FFMPEG_PATH");
   }
 
-  if (app.isPackaged) {
-    const packaged = path.join(process.resourcesPath, "ffmpeg", ffmpegBinaryName());
-    if (fs.existsSync(packaged)) {
-      return packaged;
-    }
+  const bundled = path.join(bundledBinaryDir(), ffmpegBinaryName());
+  if (fs.existsSync(bundled)) {
+    return bundled;
   }
 
-  const fromFfmpegBinary = resolveFfmpegFromFfmpegBinaryPackage();
-  if (fromFfmpegBinary !== null) {
-    return fromFfmpegBinary;
-  }
-
-  throw new Error(
-    "Gömülü FFmpeg (7.x) bulunamadı. @ffmpeg-binary/ffmpeg kurulumunu veya desteklenen bir platform (ör. darwin arm64/x64, linux x64/arm64, win32 x64) kullandığınızı doğrulayın. Ayrıca LFC_FFMPEG_PATH ile özel ikili verebilirsiniz."
-  );
+  throw new Error(`Gömülü FFmpeg bulunamadı: ${bundled}\n${FETCH_HINT}`);
 }
 
 function ffprobeBinaryName(): string {
@@ -119,7 +82,7 @@ function ffprobeBinaryName(): string {
 
 /**
  * ffprobe yolu: özel ffmpeg'in yanındaki ffprobe → LFC_FFPROBE_PATH →
- * (paketliyse) resources/ffmpeg → ffprobe-static.
+ * gömülü ikili (7.1).
  *
  * **Parametre ffmpeg'in yoludur, ffprobe'unki değil.** Eskiden kullanıcının
  * ayarladığı ffmpeg yolu doğrudan ffprobe olarak döndürülüyordu: ffmpeg,
@@ -128,9 +91,10 @@ function ffprobeBinaryName(): string {
  * kurulumunun yanındaki ffprobe'u aramak — aynı derlemeden geldiği için sürüm
  * uyumu da kendiliğinden sağlanır.
  *
- * Not: geri düşülen `ffprobe-static` **FFmpeg 4.4** ikilisi içerir; gömülü
- * ffmpeg 7.0 ile arasında üç major sürüm fark var ve Apple Silicon'da x86_64
- * ikilisi Rosetta ile çalışıyor (DENETIM.md D-19).
+ * Gömülü ffprobe artık gömülü ffmpeg ile aynı derlemeden geliyor (ikisi de 7.1,
+ * doğru mimaride). Eskiden ffprobe `ffprobe-static` paketinden 4.4 olarak
+ * geliyordu — üç major sürüm geride, üstelik Apple Silicon'da Rosetta altında —
+ * ve uygulamanın kendi ürettiği AVIF dosyasını okuyamıyordu (DENETIM.md D-19).
  */
 export function resolveFfprobeExecutable(ffmpegBinaryOverride?: string | undefined): string {
   const trimmed = ffmpegBinaryOverride?.trim();
@@ -147,20 +111,10 @@ export function resolveFfprobeExecutable(ffmpegBinaryOverride?: string | undefin
     return validateExecutablePath(fromEnv, "LFC_FFPROBE_PATH");
   }
 
-  if (app.isPackaged) {
-    const packaged = path.join(process.resourcesPath, "ffmpeg", ffprobeBinaryName());
-    if (fs.existsSync(packaged)) {
-      return packaged;
-    }
+  const bundled = path.join(bundledBinaryDir(), ffprobeBinaryName());
+  if (fs.existsSync(bundled)) {
+    return bundled;
   }
 
-  const mod = require("ffprobe-static") as { path?: string };
-  const fromPkg = mod?.path;
-  if (typeof fromPkg === "string" && fromPkg.length > 0 && fs.existsSync(fromPkg)) {
-    return fromPkg;
-  }
-
-  throw new Error(
-    "Gömülü ffprobe bulunamadı. ffprobe-static kurulumunu veya LFC_FFPROBE_PATH ortam değişkenini kontrol edin."
-  );
+  throw new Error(`Gömülü ffprobe bulunamadı: ${bundled}\n${FETCH_HINT}`);
 }
