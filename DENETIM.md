@@ -19,7 +19,7 @@ Bir bulgu kapatıldığında kutusunu işaretle ve altına kapanış notu düş:
   > **Kapatıldı:** 2026-08-20 · commit `abc1234` · örnek: virgüller `\,` ile kaçışlandı, /aspect-ratio ve ana dönüştürücüde 16:9 / 9:16 / 1:1 doğrulandı.
 ```
 
-Bulgu ID'leri (`D-01` … `D-23`) sabittir, yeniden numaralandırma.
+Bulgu ID'leri (`D-01` … `D-24`) sabittir, yeniden numaralandırma.
 
 ---
 
@@ -29,12 +29,12 @@ Bulgu ID'leri (`D-01` … `D-23`) sabittir, yeniden numaralandırma.
 |---|---|---|
 | 🔴 Kritik | 1 | 0 |
 | 🟠 Yüksek | 6 | **3** |
-| 🟡 Orta | 16 | 0 |
-| **Toplam** | **23** | **3** |
+| 🟡 Orta | 17 | **1** |
+| **Toplam** | **24** | **4** |
 
-**Kapatılanlar:** D-02, D-03, D-04 — 18 Ağustos 2026. Üçü de gerçek FFmpeg koşumuyla doğrulandı; `pnpm typecheck` 8/8 temiz, lint gerilemesi yok.
+**Kapatılanlar (18 Ağustos 2026):** D-02, D-03, D-04 — üçü de gerçek FFmpeg koşumuyla doğrulandı · D-21 — CI kapısı ve duman testleri eklendi.
 
-Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **23 hata / 2 uyarı** · test dosyası **0**
+Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uyarı** · **34 test geçiyor** · CI kapısı **aktif**
 
 ---
 
@@ -154,7 +154,11 @@ Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **23 hata / 2 u
 - [ ] **D-20** — Metadata okuma ffmpeg yolunu ffprobe sanıyor
   > [apps/desktop/electron/main.ts:1342](apps/desktop/electron/main.ts#L1342) — `resolveFfprobeExecutable(lpcSettings.ffmpegBinary)`; kullanıcının ayarladığı **ffmpeg** yolu ffprobe override'ı olarak geçiriliyor. Altyazı probe'u ([main.ts:1030](apps/desktop/electron/main.ts#L1030)) doğru şekilde `undefined` geçiyor — tutarsızlık kodun kendi içinde.
 
-- [ ] **D-21** — Yayın hattında hiçbir kalite kapısı yok
+- [x] **D-21** — Yayın hattında hiçbir kalite kapısı yok
+  > **✅ Kapatıldı:** 2026-08-18 · [.github/workflows/ci.yml](.github/workflows/ci.yml) eklendi — main'e açılan her PR'da ve main'e her push'ta typecheck → lint → test.
+  > **Beraberinde:** Vitest kuruldu ve `buildFfmpegArgs` / `buildTrimArgs` için 34 duman testi yazıldı. Testlerin regresyonu gerçekten yakaladığı, üç düzeltme tek tek geri alınarak doğrulandı (D-02 → 4, D-03 → 7, D-04 → 6 test kırılıyor). Trim mantığı test edilebilmesi için IPC handler'ından saf `buildTrimArgs` fonksiyonuna çıkarıldı.
+  > **Ayrıca:** 23 lint hatası sıfıra indirildi (kapının yeşil açılabilmesi için) — bu sırada erişilemeyen bir `{#if}` dalı da bulunup silindi.
+  > **Kalan eksik:** kilit dosyası uyumsuzluğu nedeniyle `--frozen-lockfile` kullanılamıyor, bkz. **D-24**.
   > [.github/workflows/release.yml](.github/workflows/release.yml) yalnızca sürüm etiketiyle tetikleniyor ve typecheck/lint/test çalıştırmadan doğrudan paketleyip yayınlıyor. PR veya push üzerinde çalışan CI hiç yok. Şu an `pnpm lint` **23 hata / 2 uyarı** veriyor ve bunu yakalayan hiçbir şey yok. Repoda **0 test dosyası** var.
   > **Not:** Bu denetimde bulunan kırık özelliklerin tamamı tür kontrolünden temiz geçiyor — ve tamamı tek bir `buildFfmpegArgs` anlık görüntü testiyle yakalanabilirdi.
 
@@ -163,6 +167,13 @@ Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **23 hata / 2 u
 
 - [ ] **D-23** — Arayüzde işlevsiz kontroller
   > [routes/resolution/+page.svelte:155](apps/desktop/src/routes/resolution/+page.svelte#L155) — `...(keepAspect ? {} : {})`, iki dal da boş. "En-boy oranını koru" anahtarı **hiçbir şey yapmıyor**. Ayrıca extra FFmpeg argümanları alanı `split(/\s+/)` ile bölündüğü ve tırnak desteklemediği için boşluk içeren hiçbir değer yazılamıyor (ör. `-metadata title=My Movie`).
+
+- [ ] **D-24** — Kilit dosyası beyan edilen paket yöneticisiyle uyumsuz
+  > **Konum:** [pnpm-lock.yaml](pnpm-lock.yaml) · [package.json](package.json)
+  > **Bulgu:** `package.json` `pnpm@9.15.4` beyan ediyor, ama depodaki `pnpm-lock.yaml` hâlâ **lockfileVersion 5.4** (pnpm 7 formatı). pnpm 9 bu dosyayı `Ignoring not compatible lockfile` diyerek tamamen yok sayıyor.
+  > **Etki:** `--frozen-lockfile` hiçbir yerde kullanılamıyor. `release.yml` ve `ci.yml` `--no-frozen-lockfile` ile çalışmak zorunda, yani **bağımlılıklar her koşumda taze çözülüyor**. Sürüm çıkarken kullanıcıya giden paketin bağımlılık ağacı, yerelde test edilenle aynı olduğunun garantisi yok; CI de tekrarlanabilir değil.
+  > **Nasıl bulundu:** CI kapısı eklenirken `--frozen-lockfile` ile ilk koşum `ERR_PNPM_NO_LOCKFILE` verdi. Kilit dosyasının bu değişiklikten **önce de** 5.4 olduğu `git show` ile doğrulandı — yani mevcut bir sorun, yeni girmedi.
+  > **Öneri:** pnpm 9.15.4 ile kilit dosyası yeniden üretilsin (`corepack use pnpm@9.15.4` + `pnpm install`), sonra hem `ci.yml` hem `release.yml` `--frozen-lockfile`'a geçirilsin. Bağımlılık ağacı değişebileceği için ayrı bir PR'da, paketleme testiyle birlikte yapılmalı.
 
 ---
 
