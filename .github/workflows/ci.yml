@@ -1,0 +1,48 @@
+name: CI
+
+# Kalite kapısı: sürüm etiketi beklemeden, değişiklik main'e girmeden önce çalışır.
+# Öncesinde hiçbir otomatik kontrol yoktu; release.yml yalnızca etiketle tetikleniyor
+# ve typecheck/lint/test çalıştırmadan doğrudan paketleyip yayınlıyordu.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Aynı dala arka arkaya push edilirse önceki koşumu iptal et.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Tür kontrolü, lint ve testler
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # release.yml'in aksine frozen: kilit dosyası ile package.json'un ayrışması
+      # sürüm çıkarken değil, burada yakalanmalı.
+      - name: Bağımlılıkları kur
+        run: pnpm install --frozen-lockfile
+
+      - name: Tür kontrolü
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Testler
+        run: pnpm test
