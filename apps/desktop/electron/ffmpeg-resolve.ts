@@ -6,6 +6,36 @@ import { app } from "electron";
 
 const require = createRequire(import.meta.url);
 
+/**
+ * Kullanıcı tarafından seçilmiş bir ikili yolunu doğrular.
+ *
+ * Güvenlik: bu değer bir zamanlar renderer'dan ham string olarak geliyor ve hiçbir
+ * kontrolden geçmeden `spawn` ediliyordu — yani tek bir doğrulanmamış IPC çağrısı
+ * kalıcı bir arka kapıya dönüşebiliyordu. Artık yol yalnızca ana süreçteki dosya
+ * diyaloğundan gelebilir; buna rağmen ayarlar dosyası elle düzenlenebileceği için
+ * kullanım anında da doğrulanır.
+ */
+function validateExecutablePath(candidate: string, label: string): string {
+  if (!path.isAbsolute(candidate)) {
+    throw new Error(`${label} yolu mutlak olmalı: ${candidate}`);
+  }
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(candidate);
+  } catch {
+    throw new Error(`${label} bulunamadı: ${candidate}`);
+  }
+  if (!stat.isFile()) {
+    throw new Error(`${label} bir dosya değil: ${candidate}`);
+  }
+  try {
+    fs.accessSync(candidate, fs.constants.X_OK);
+  } catch {
+    throw new Error(`${label} çalıştırılabilir değil: ${candidate}`);
+  }
+  return candidate;
+}
+
 function ffmpegBinaryName(): string {
   return process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
 }
@@ -58,12 +88,12 @@ function resolveFfmpegFromFfmpegBinaryPackage(): string | null {
 export function resolveFfmpegExecutable(override?: string | undefined): string {
   const trimmed = override?.trim();
   if (trimmed && trimmed.length > 0) {
-    return trimmed;
+    return validateExecutablePath(trimmed, "Özel FFmpeg");
   }
 
   const fromEnv = process.env.LFC_FFMPEG_PATH?.trim();
   if (fromEnv && fromEnv.length > 0) {
-    return fromEnv;
+    return validateExecutablePath(fromEnv, "LFC_FFMPEG_PATH");
   }
 
   if (app.isPackaged) {
@@ -89,17 +119,18 @@ function ffprobeBinaryName(): string {
 
 /**
  * ffprobe yolu: geçersiz kılma → LFC_FFPROBE_PATH → (paketliyse) resources/ffmpeg → ffprobe-static.
- * Not: ffprobe-static hâlen FFmpeg 6.x ikilisi içerir; metadata okuma için genelde uygundur.
+ * Not: ffprobe-static FFmpeg 4.x ikilisi içerir — gömülü ffmpeg 7.x ile arasında üç major
+ * sürüm fark var (DENETIM.md D-19). Modern konteynerlerde ayrışma riski gerçek.
  */
 export function resolveFfprobeExecutable(override?: string | undefined): string {
   const trimmed = override?.trim();
   if (trimmed && trimmed.length > 0) {
-    return trimmed;
+    return validateExecutablePath(trimmed, "Özel ffprobe");
   }
 
   const fromEnv = process.env.LFC_FFPROBE_PATH?.trim();
   if (fromEnv && fromEnv.length > 0) {
-    return fromEnv;
+    return validateExecutablePath(fromEnv, "LFC_FFPROBE_PATH");
   }
 
   if (app.isPackaged) {

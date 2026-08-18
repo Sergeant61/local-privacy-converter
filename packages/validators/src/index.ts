@@ -3,17 +3,19 @@ import { z } from "zod";
 /** Tek dosya seçimi için temel doğrulama (renderer → IPC). */
 export const filePathSchema = z.string().trim().min(1);
 
-/** Ana süreçte kullanıcıdan gelen FFmpeg yolu (bilinçli olarak gevşek; shell ile çalıştırılmaz). */
-export const ffmpegExecutableSchema = z.string().trim().min(1);
-
-/** executable yoksa ana süreç gömülü ikiliyi seçer (PATH varsayılanı yok). */
-export const ipcGetFfmpegVersionRequestSchema = z.object({
-  executable: ffmpegExecutableSchema.optional()
-});
+/**
+ * GÜVENLİK: renderer artık çalıştırılacak ikilinin yolunu BELİRLEYEMEZ.
+ *
+ * Bu alanlar eskiden renderer'dan ham string olarak geliyor, hiçbir kontrolden
+ * geçmeden `spawn` ediliyordu ve `settings/set` üzerinden diske kalıcı yazılabiliyordu —
+ * tek bir doğrulanmamış IPC çağrısı kalıcı arka kapıya dönüşüyordu (DENETIM.md D-01).
+ * Özel ikili yolu artık yalnızca ana süreçteki dosya diyaloğundan gelir ve kullanım
+ * anında varlık/dosya/çalıştırılabilirlik kontrolünden geçer.
+ */
+export const ipcGetFfmpegVersionRequestSchema = z.object({});
 
 export const ipcMediaProbeRequestSchema = z.object({
-  inputPath: filePathSchema,
-  ffprobeExecutable: ffmpegExecutableSchema.optional()
+  inputPath: filePathSchema
 });
 
 export const mediaProbeSummarySchema = z.object({
@@ -26,9 +28,7 @@ export const mediaProbeSummarySchema = z.object({
   inferredKind: z.enum(["video", "audio", "image-only"])
 });
 
-export const ipcFfmpegCapabilitiesRequestSchema = z.object({
-  ffmpegExecutable: ffmpegExecutableSchema.optional()
-});
+export const ipcFfmpegCapabilitiesRequestSchema = z.object({});
 
 export const ffmpegCapabilitiesSchema = z.object({
   encoders: z.array(z.string()),
@@ -144,10 +144,6 @@ export const convertJobSpecSchema = z.object({
 
 export const ipcRunConvertJobRequestSchema = z.object({
   spec: convertJobSpecSchema,
-  ffmpegExecutable: z.preprocess(
-    (v) => (v === "" || v === null ? undefined : v),
-    ffmpegExecutableSchema.optional()
-  ),
   /** ffprobe; ilerleme — string sayı veya null güvenli. */
   inputDurationSec: positiveFiniteSecondsSchema
 });
@@ -186,6 +182,30 @@ export const ipcSaveOutputDialogResponseSchema = z.discriminatedUnion("canceled"
   })
 ]);
 
+/**
+ * Ayar yazma paketi.
+ *
+ * GÜVENLİK: `outputDir` ve `ffmpegBinary` bilerek YOKTUR — yol üretebilen tek
+ * yer ana süreçteki dosya diyaloğudur. Renderer yalnızca "diyaloğu aç" veya
+ * "temizle" niyeti gönderebilir (DENETIM.md D-01). `.strict()`, eski
+ * sürümlerden kalan ham yol alanlarını sessizce yutmak yerine reddeder.
+ */
+export const ipcSettingsSetRequestSchema = z
+  .object({
+    defaultQuality: z.enum(["high", "compatible", "balanced", "small", "very_small"]).optional(),
+    pickOutputDir: z.boolean().optional(),
+    clearOutputDir: z.boolean().optional(),
+    pickFfmpegBinary: z.boolean().optional(),
+    clearFfmpegBinary: z.boolean().optional()
+  })
+  .strict();
+
+export const lpcSettingsSchema = z.object({
+  outputDir: z.string().optional(),
+  ffmpegBinary: z.string().optional(),
+  defaultQuality: z.enum(["high", "compatible", "balanced", "small", "very_small"]).optional()
+});
+
 export const ipcFfmpegVersionSuccessSchema = z.object({
   ok: z.literal(true),
   versionLine: z.string()
@@ -216,3 +236,5 @@ export type IpcConvertProgressEvent = z.infer<typeof ipcConvertProgressEventSche
 export type IpcRunConvertJobResponse = z.infer<typeof ipcRunConvertJobResponseSchema>;
 export type IpcSaveOutputDialogRequest = z.infer<typeof ipcSaveOutputDialogRequestSchema>;
 export type IpcSaveOutputDialogResponse = z.infer<typeof ipcSaveOutputDialogResponseSchema>;
+export type IpcSettingsSetRequest = z.infer<typeof ipcSettingsSetRequestSchema>;
+export type LpcSettingsPayload = z.infer<typeof lpcSettingsSchema>;

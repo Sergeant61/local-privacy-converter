@@ -12,11 +12,9 @@ import type {
 declare global {
   interface Window {
     lfc: {
-      getFfmpegVersion: (executable?: string) => Promise<IpcFfmpegVersionResponse>;
-      probeMedia: (args: { inputPath: string; ffprobeExecutable?: string }) => Promise<IpcMediaProbeResponse>;
-      getFfmpegCapabilities: (
-        args?: { ffmpegExecutable?: string }
-      ) => Promise<IpcFfmpegCapabilitiesResponse>;
+      getFfmpegVersion: () => Promise<IpcFfmpegVersionResponse>;
+      probeMedia: (args: { inputPath: string }) => Promise<IpcMediaProbeResponse>;
+      getFfmpegCapabilities: () => Promise<IpcFfmpegCapabilitiesResponse>;
       showOpenMediaDialog: () => Promise<IpcOpenMediaDialogResponse>;
       showSaveOutputDialog: (req: IpcSaveOutputDialogRequest) => Promise<IpcSaveOutputDialogResponse>;
       runConvertJob: (
@@ -60,10 +58,11 @@ declare global {
         defaultQuality?: string;
       }>;
       setSettings: (patch: {
-        outputDir?: string;
-        ffmpegBinary?: string;
         defaultQuality?: string;
         pickOutputDir?: boolean;
+        clearOutputDir?: boolean;
+        pickFfmpegBinary?: boolean;
+        clearFfmpegBinary?: boolean;
       }) => Promise<{ ok: true } | { ok: false; message: string }>;
       subtitleProbe: (inputPath: string) => Promise<
         | { ok: true; streams: { index: number; codecName: string; title: string; language: string }[] }

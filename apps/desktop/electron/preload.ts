@@ -39,12 +39,12 @@ const PDF_CONVERT_CHANNEL = "lfc/ffmpeg/pdf-convert";
 const CHECK_UPDATE_CHANNEL = "lfc/app/check-update";
 
 contextBridge.exposeInMainWorld("lfc", {
-  getFfmpegVersion: (executable?: string) =>
-    ipcRenderer.invoke(VERSION_CHANNEL, executable !== undefined ? { executable } : {}),
-  probeMedia: (args: { inputPath: string; ffprobeExecutable?: string }) =>
-    ipcRenderer.invoke(PROBE_CHANNEL, args),
-  getFfmpegCapabilities: (args?: { ffmpegExecutable?: string }) =>
-    ipcRenderer.invoke(CAPABILITIES_CHANNEL, args ?? {}),
+  // GÜVENLİK: ikili yolu artık köprüden geçmiyor; ana süreç ayarlardaki
+  // (yalnızca dosya diyaloğuyla yazılabilen) yolu kullanır — DENETIM.md D-01.
+  getFfmpegVersion: () => ipcRenderer.invoke(VERSION_CHANNEL, {}),
+  probeMedia: (args: { inputPath: string }) =>
+    ipcRenderer.invoke(PROBE_CHANNEL, { inputPath: args.inputPath }),
+  getFfmpegCapabilities: () => ipcRenderer.invoke(CAPABILITIES_CHANNEL, {}),
   showOpenMediaDialog: () => ipcRenderer.invoke(OPEN_MEDIA_CHANNEL, {}),
   showSaveOutputDialog: (req: IpcSaveOutputDialogRequest) =>
     ipcRenderer.invoke(SAVE_OUTPUT_CHANNEL, req),
@@ -151,10 +151,12 @@ contextBridge.exposeInMainWorld("lfc", {
   },
   getSettings: () => ipcRenderer.invoke(SETTINGS_GET_CHANNEL),
   setSettings: (patch: {
-    outputDir?: string;
-    ffmpegBinary?: string;
     defaultQuality?: string;
+    /** Klasör/ikili yolu yalnızca ana süreçteki diyalogla seçilir. */
     pickOutputDir?: boolean;
+    clearOutputDir?: boolean;
+    pickFfmpegBinary?: boolean;
+    clearFfmpegBinary?: boolean;
   }) => ipcRenderer.invoke(SETTINGS_SET_CHANNEL, patch),
   subtitleProbe: (inputPath: string) =>
     ipcRenderer.invoke(SUBTITLE_PROBE_CHANNEL, { inputPath }),

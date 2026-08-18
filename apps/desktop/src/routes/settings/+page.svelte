@@ -43,14 +43,31 @@
     }
   }
 
+  // GÜVENLİK: yol artık buradan gönderilmiyor — ana süreç dosya diyaloğunu
+  // kendisi açar, seçilen ikiliyi doğrular ve öyle kaydeder (DENETIM.md D-01).
+  async function pickFfmpegBinary() {
+    if (!hasLfc) return;
+    const r = await window.lfc.setSettings({ pickFfmpegBinary: true });
+    if (r.ok) {
+      const s = await window.lfc.getSettings();
+      ffmpegBinary = s.ffmpegBinary ?? "";
+      showToast($_("settings.saved"), false);
+    } else {
+      showToast(r.ok === false ? r.message : $_("common.error"), true);
+    }
+  }
+
+  async function resetFfmpegBinary() {
+    if (!hasLfc) return;
+    ffmpegBinary = "";
+    await window.lfc.setSettings({ clearFfmpegBinary: true });
+    showToast($_("settings.saved"), false);
+  }
+
   async function save() {
     if (!hasLfc) return;
     saving = true;
-    const r = await window.lfc.setSettings({
-      outputDir: outputDir.trim() || undefined,
-      ffmpegBinary: ffmpegBinary.trim() || undefined,
-      defaultQuality: defaultQuality,
-    });
+    const r = await window.lfc.setSettings({ defaultQuality });
     saving = false;
     if (r.ok) {
       showToast($_("settings.saved"), false);
@@ -60,8 +77,9 @@
   }
 
   async function resetOutputDir() {
+    if (!hasLfc) return;
     outputDir = "";
-    await window.lfc.setSettings({ outputDir: "" });
+    await window.lfc.setSettings({ clearOutputDir: true });
     showToast($_("settings.outputDirReset"), false);
   }
 
@@ -156,12 +174,19 @@
     <section class="card">
       <h2 class="card-title">{$_("settings.ffmpegBinary")}</h2>
       <p class="field-desc">{$_("settings.ffmpegBinaryDesc")}</p>
-      <input
-        type="text"
-        class="text-input"
-        placeholder={$_("settings.ffmpegBinaryPlaceholder")}
-        bind:value={ffmpegBinary}
-      />
+      <div class="dir-row">
+        <input
+          type="text"
+          class="text-input dir-input"
+          placeholder={$_("settings.ffmpegBinaryPlaceholder")}
+          value={ffmpegBinary}
+          readonly
+        />
+        <button type="button" class="btn btn-secondary" onclick={pickFfmpegBinary}>{$_("common.browse")}</button>
+        {#if ffmpegBinary}
+          <button type="button" class="btn btn-ghost" onclick={resetFfmpegBinary} title={$_("settings.resetToDefault")}>↺</button>
+        {/if}
+      </div>
       {#if ffmpegBinary}
         <p class="warning-note">{$_("settings.ffmpegBinaryWarning")}</p>
       {/if}

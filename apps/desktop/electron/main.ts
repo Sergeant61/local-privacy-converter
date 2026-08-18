@@ -28,7 +28,8 @@ import {
   ipcMediaProbeRequestSchema,
   ipcOpenMediaDialogRequestSchema,
   ipcRunConvertJobRequestSchema,
-  ipcSaveOutputDialogRequestSchema
+  ipcSaveOutputDialogRequestSchema,
+  ipcSettingsSetRequestSchema
 } from "@lfc/validators";
 
 import { resolveFfmpegExecutable, resolveFfprobeExecutable } from "./ffmpeg-resolve";
@@ -224,7 +225,7 @@ function wireIpcHandlers() {
 
       let executable: string;
       try {
-        executable = resolveFfmpegExecutable(parsed.data.executable);
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         return { ok: false, message };
@@ -261,7 +262,7 @@ function wireIpcHandlers() {
 
       let ffprobeExe: string;
       try {
-        ffprobeExe = resolveFfprobeExecutable(parsed.data.ffprobeExecutable);
+        ffprobeExe = resolveFfprobeExecutable(lpcSettings.ffmpegBinary);
       } catch (error: unknown) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
       }
@@ -293,7 +294,7 @@ function wireIpcHandlers() {
 
       let executable: string;
       try {
-        executable = resolveFfmpegExecutable(parsed.data.ffmpegExecutable);
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
       } catch (error: unknown) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
       }
@@ -373,7 +374,7 @@ function wireIpcHandlers() {
 
       let executable: string;
       try {
-        executable = resolveFfmpegExecutable(parsed.data.ffmpegExecutable);
+        executable = resolveFfmpegExecutable(lpcSettings.ffmpegBinary);
       } catch (error: unknown) {
         return {
           ok: false,
@@ -504,8 +505,15 @@ function wireIpcHandlers() {
       _event,
       payload: unknown
     ): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const p = payload as Partial<LpcSettings> & { pickOutputDir?: boolean };
-      if (p?.pickOutputDir) {
+      const parsed = ipcSettingsSetRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) {
+        return { ok: false, message: "Geçersiz ayar paketi." };
+      }
+      const p = parsed.data;
+
+      // GÜVENLİK: klasör ve ikili yolları renderer'dan ham string olarak KABUL EDİLMEZ.
+      // Yalnızca ana süreçteki dosya diyaloğu bir yol üretebilir (DENETIM.md D-01).
+      if (p.pickOutputDir) {
         const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
         if (result.canceled || !result.filePaths[0]) {
           return { ok: false, message: "İptal edildi." };
@@ -513,10 +521,40 @@ function wireIpcHandlers() {
         saveSettings({ outputDir: result.filePaths[0] });
         return { ok: true };
       }
+
+      if (p.pickFfmpegBinary) {
+        const result = await dialog.showOpenDialog({
+          title: "FFmpeg ikilisini seçin",
+          properties: ["openFile"]
+        });
+        if (result.canceled || !result.filePaths[0]) {
+          return { ok: false, message: "İptal edildi." };
+        }
+        const chosen = result.filePaths[0];
+        try {
+          // Seçim anında doğrula: kullanıcı rastgele bir dosya seçmiş olabilir.
+          resolveFfmpegExecutable(chosen);
+        } catch (e) {
+          return { ok: false, message: e instanceof Error ? e.message : String(e) };
+        }
+        saveSettings({ ffmpegBinary: chosen });
+        return { ok: true };
+      }
+
+      if (p.clearOutputDir) {
+        lpcSettings = { ...lpcSettings, outputDir: undefined };
+        saveSettings({});
+        return { ok: true };
+      }
+
+      if (p.clearFfmpegBinary) {
+        lpcSettings = { ...lpcSettings, ffmpegBinary: undefined };
+        saveSettings({});
+        return { ok: true };
+      }
+
       const patch: Partial<LpcSettings> = {};
-      if (typeof p?.outputDir === "string") patch.outputDir = p.outputDir;
-      if (typeof p?.ffmpegBinary === "string") patch.ffmpegBinary = p.ffmpegBinary;
-      if (typeof p?.defaultQuality === "string") patch.defaultQuality = p.defaultQuality as LpcSettings["defaultQuality"];
+      if (p.defaultQuality !== undefined) patch.defaultQuality = p.defaultQuality;
       saveSettings(patch);
       return { ok: true };
     }
