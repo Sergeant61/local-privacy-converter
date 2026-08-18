@@ -27,20 +27,23 @@ Bulgu ID'leri (`D-01` … `D-24`) sabittir, yeniden numaralandırma.
 
 | Önem | Adet | Kapatılan |
 |---|---|---|
-| 🔴 Kritik | 1 | 0 |
-| 🟠 Yüksek | 6 | **3** |
+| 🔴 Kritik | 1 | **1** |
+| 🟠 Yüksek | 6 | **4** |
 | 🟡 Orta | 17 | **1** |
-| **Toplam** | **24** | **4** |
+| **Toplam** | **24** | **6** |
 
-**Kapatılanlar (18 Ağustos 2026):** D-02, D-03, D-04 — üçü de gerçek FFmpeg koşumuyla doğrulandı · D-21 — CI kapısı ve duman testleri eklendi.
+**Kapatılanlar (18 Ağustos 2026):** D-01 · D-02, D-03, D-04 — üçü de gerçek FFmpeg koşumuyla doğrulandı · D-07 · D-21 — CI kapısı ve duman testleri eklendi.
 
-Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uyarı** · **34 test geçiyor** · CI kapısı **aktif**
+Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uyarı** · **62 test geçiyor** (34 ffmpeg-core + 28 validators) · CI kapısı **aktif**
 
 ---
 
 ## 🔴 Kritik
 
-- [ ] **D-01** — Renderer kalıcı olarak keyfi bir ikili çalıştırabiliyor
+- [x] **D-01** — Renderer kalıcı olarak keyfi bir ikili çalıştırabiliyor
+  > **✅ Kapatıldı:** 2026-08-18 · [validators/src/index.ts](packages/validators/src/index.ts) · [ffmpeg-resolve.ts](apps/desktop/electron/ffmpeg-resolve.ts) · [main.ts](apps/desktop/electron/main.ts) · [settings/+page.svelte](apps/desktop/src/routes/settings/+page.svelte)
+  > **Ne yapıldı:** `ffmpegExecutableSchema` IPC şemalarından tümüyle kaldırıldı — version, probe ve capabilities kanalları artık ayarlardaki yolu kullanıyor. `settings/set` niyet tabanlı ve `.strict()`: renderer yalnızca `pickFfmpegBinary` / `clearFfmpegBinary` / `pickOutputDir` / `clearOutputDir` gönderebilir, **yol gönderemez**; yol üretebilen tek yer ana süreçteki `dialog.showOpenDialog`. `validateExecutablePath()` hem seçim hem kullanım anında mutlak yol / dosya olma / çalıştırılabilirlik kontrolü yapıyor. Preload köprüsünden `ffmpegExecutable` ve `ffprobeExecutable` parametreleri düştü; ayarlar sayfasındaki serbest metin alanı salt-okunur yol + dosya seçici oldu.
+  > **Doğrulama:** 6 şema testi (ham yol içeren 4 farklı paket reddediliyor, bilinmeyen alan reddediliyor, niyet bayrakları geçiyor) · uygulama çalıştırılıp gerçek IPC üzerinden `setSettings({ ffmpegBinary: "/tmp/evil.sh" })` denendi → `{ ok: false, message: "Geçersiz ayar paketi." }`.
   > **Konum:** [apps/desktop/electron/ffmpeg-resolve.ts:58](apps/desktop/electron/ffmpeg-resolve.ts#L58) · [apps/desktop/electron/main.ts:504](apps/desktop/electron/main.ts#L504) · 13 handler
   > **Bulgu:** `resolveFfmpegExecutable()` verilen yolu allowlist, varlık veya imza kontrolü olmadan aynen döndürüyor. `settings/set` kanalı `ffmpegBinary` alanını yalnızca `typeof === "string"` kontrolüyle diske **kalıcı** yazıyor. Sonrasında 13 handler bu değeri spawn edilecek ikili olarak kullanıyor — tek bir doğrulanmamış IPC çağrısı kalıcı arka kapıya dönüşüyor.
   > **Bağlam:** Sömürü için önce renderer'da kod çalıştırma gerekiyor; tam da o katmanda `sandbox`, CSP, `setWindowOpenHandler`, `will-navigate` **hiç yok** (bkz. D-07).
@@ -91,7 +94,11 @@ Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uy
   > **Kanıt:** mov_text altyazılı MP4 (MP4'ün standart altyazı codec'i) → üç formatta da boş dosya, `Could not write header`. `-c:s copy` kaldırılınca aynı komut düzgün SRT üretiyor.
   > **Etki:** Yalnızca kaynak codec ile hedef konteynerin zaten eşleştiği dar durumda çalışıyor.
 
-- [ ] **D-07** — 29 IPC kanalının 23'ünde şema doğrulaması yok
+- [x] **D-07** — 29 IPC kanalının 23'ünde şema doğrulaması yok
+  > **✅ Kapatıldı:** 2026-08-18 · [validators/src/index.ts](packages/validators/src/index.ts) · [validators/src/path-guard.ts](packages/validators/src/path-guard.ts) · [main.ts](apps/desktop/electron/main.ts)
+  > **Ne yapıldı:** 23 kanalın tamamı `.strict()` Zod şemasından geçiyor. Serbest string alanlar enum'a indirildi (`format`, `mode`, `position`, `outputEncoder`; `fontColor` desene bağlandı), sayısal alanlar sonlu ve aralıklı (`NaN`/`Infinity` artık geçmiyor). Yeni `path-guard` modülü her giriş/çıkış yolunu mutlaklık, NUL ve dizin geçişi için denetliyor; yazma hedefleri korumalı sistem köklerine (`/System`, `/usr`, `/etc`, `/Applications`, Windows karşılıkları) kapalı — beyaz liste değil kara liste, çünkü harici disk meşru bir hedef. Electron sertleştirildi: `sandbox: true`, `webviewTag: false`, başlıkla verilen CSP (`connect-src 'self'` — medya makineden çıkmıyor), `setWindowOpenHandler` (harici bağlantı tarayıcıya, pencere açılmıyor), `will-navigate` köken kontrolü, `will-attach-webview` reddi. `lpc://` statik sunucusu build dizinine sınırlandı.
+  > **Ayrıca düzeltildi (yan bulgu):** filigran metni filtergraph'a gömülüyordu ve yalnızca `'` kaçırılıyordu. `drawtext`'in `text=` seçeneği için `:` ve `%` karakterlerinin güvenilir bir kaçırma biçimi yok — `12:34 100% it's` yazan bir filigran karede **tek bir "b" harfi** olarak çıkıyordu. Metin artık `textfile=` + `expansion=none` ile geçiriliyor.
+  > **Doğrulama:** 22 şema/yol testi · uygulama çalıştırılıp gerçek IPC üzerinden sınandı: trim / gif / watermark / metadata **başarılı**, `/etc/pwned.gif` çıktısı → `"korumalı sistem dizinine yazamaz: /etc"`, göreli giriş yolu → `"mutlak olmalı"`. `sandbox: true` + CSP altında arayüz tam hidrasyonla açılıyor (16 gezinme bağlantısı, `window.lfc` köprüsü canlı, konsolda CSP ihlali yok). Filigran düzeltmesi kare çıkarılarak görsel olarak doğrulandı: `12:34 'a' 100%` harfi harfine basılıyor.
   > **Konum:** [apps/desktop/electron/main.ts](apps/desktop/electron/main.ts) · [packages/validators](packages/validators)
   > **Bulgu:** Zod şeması yalnızca 6 kanalda var. Doğrulanmayan 23 kanalın **13'ü doğrudan ffmpeg başlatıyor** ve giriş/çıkış yollarını renderer'dan ham alıyor. Hiçbir kanalda yol geçişi (`..`) filtresi veya kök dizin sınırlaması yok.
   > **Ayrıca:** Electron sertleştirmesi eksik — `sandbox`, CSP, `setWindowOpenHandler`, `will-navigate` kod tabanında hiç geçmiyor. `contextIsolation: true` ve `nodeIntegration: false` doğru ayarlanmış ama tek başlarına.

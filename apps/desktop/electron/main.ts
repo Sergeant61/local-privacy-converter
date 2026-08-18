@@ -29,7 +29,27 @@ import {
   ipcOpenMediaDialogRequestSchema,
   ipcRunConvertJobRequestSchema,
   ipcSaveOutputDialogRequestSchema,
-  ipcSettingsSetRequestSchema
+  ipcSettingsSetRequestSchema,
+  ipcReadPreviewRequestSchema,
+  ipcShowInFolderRequestSchema,
+  ipcAudioMergeRequestSchema,
+  ipcVideoMergeRequestSchema,
+  ipcFrameExtractRequestSchema,
+  ipcGifConvertRequestSchema,
+  ipcApngConvertRequestSchema,
+  ipcPdfConvertRequestSchema,
+  ipcSubtitleProbeRequestSchema,
+  ipcSubtitleExtractRequestSchema,
+  ipcVideoTrimRequestSchema,
+  ipcAudioNormalizeRequestSchema,
+  ipcWatermarkRequestSchema,
+  ipcMetadataReadRequestSchema,
+  ipcMetadataWriteRequestSchema,
+  ipcProfilesSaveRequestSchema,
+  ipcProfilesDeleteRequestSchema,
+  checkInputPath,
+  checkInputPaths,
+  checkOutputPath
 } from "@lfc/validators";
 
 import { resolveFfmpegExecutable, resolveFfprobeExecutable } from "./ffmpeg-resolve";
@@ -68,6 +88,27 @@ const CHECK_UPDATE_CHANNEL = "lfc/app/check-update";
 
 // Must be set before app.whenReady() so menu bar and dock show the correct name
 app.setName("Local Privacy Converter");
+
+/**
+ * Bir IPC paketini şemadan ve yol korumasından geçirir (DENETIM.md D-07).
+ *
+ * Şemalar `.strict()` olduğu için bilinmeyen alan sessizce yutulmaz; yol
+ * koruması ise ele geçirilmiş bir renderer'ın dizin geçişi ya da sistem
+ * dizinine yazma denemesini durdurur.
+ */
+/**
+ * Filtergraph içinde bir dosya yolu için kaçırma (`textfile=`, `fontfile=`).
+ * Yalnızca ters bölü ve iki nokta — filtre seçenek ayracı bunlar.
+ */
+function escapeFilterPath(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+}
+
+type GuardFailure = { ok: false; message: string };
+
+function guardFail(message: string): GuardFailure {
+  return { ok: false, message };
+}
 
 interface LpcSettings {
   outputDir?: string;
@@ -435,10 +476,11 @@ function wireIpcHandlers() {
       _event,
       payload: unknown
     ): Promise<{ ok: true; dataUrl: string } | { ok: false; message: string }> => {
-      const filePath = (payload as { filePath?: unknown })?.filePath;
-      if (typeof filePath !== "string" || !filePath) {
-        return { ok: false, message: "Dosya yolu gerekli." };
-      }
+      const parsed = ipcReadPreviewRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Geçersiz önizleme isteği.");
+      const guard = checkInputPath(parsed.data.filePath, "Dosya yolu");
+      if (!guard.ok) return guardFail(guard.reason);
+      const filePath = guard.path;
       const mimeMap: Record<string, string> = {
         png: "image/png",
         jpg: "image/jpeg",
@@ -481,10 +523,11 @@ function wireIpcHandlers() {
 
   ipcMain.removeHandler(SHOW_IN_FOLDER_CHANNEL);
   ipcMain.handle(SHOW_IN_FOLDER_CHANNEL, (_event, payload: unknown): void => {
-    const filePath = (payload as { filePath?: unknown })?.filePath;
-    if (typeof filePath === "string" && filePath) {
-      shell.showItemInFolder(filePath);
-    }
+    const parsed = ipcShowInFolderRequestSchema.safeParse(payload ?? {});
+    if (!parsed.success) return;
+    const guard = checkInputPath(parsed.data.filePath, "Dosya yolu");
+    if (!guard.ok) return;
+    shell.showItemInFolder(guard.path);
   });
 
   ipcMain.removeHandler(CANCEL_CONVERT_CHANNEL);
@@ -570,13 +613,11 @@ function wireIpcHandlers() {
   ipcMain.handle(
     PROFILES_SAVE_CHANNEL,
     (_event, payload: unknown): { ok: true } | { ok: false; message: string } => {
-      const p = payload as Partial<UserProfile>;
-      if (typeof p?.name !== "string" || !p.name.trim()) {
-        return { ok: false, message: "Profil adı gerekli." };
+      const parsed = ipcProfilesSaveRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) {
+        return guardFail(parsed.error.issues[0]?.message ?? "Geçersiz profil.");
       }
-      if (typeof p?.targetProfileId !== "string" || !p.targetProfileId) {
-        return { ok: false, message: "Hedef profil gerekli." };
-      }
+      const p = parsed.data;
       const profiles = loadProfiles();
       const id = p.id ?? `profile-${Date.now()}`;
       const existing = profiles.findIndex((pr) => pr.id === id);
@@ -584,10 +625,10 @@ function wireIpcHandlers() {
         id,
         name: p.name.trim(),
         targetProfileId: p.targetProfileId,
-        qualityPreset: typeof p.qualityPreset === "string" ? p.qualityPreset : undefined,
-        resolutionPreset: typeof p.resolutionPreset === "string" ? p.resolutionPreset : undefined,
-        audioChannels: typeof p.audioChannels === "number" ? p.audioChannels : undefined,
-        extraFfmpegArgs: typeof p.extraFfmpegArgs === "string" ? p.extraFfmpegArgs : undefined,
+        qualityPreset: p.qualityPreset,
+        resolutionPreset: p.resolutionPreset,
+        audioChannels: p.audioChannels,
+        extraFfmpegArgs: p.extraFfmpegArgs,
         createdAt: existing >= 0 ? (profiles[existing]?.createdAt ?? Date.now()) : Date.now()
       };
       if (existing >= 0) {
@@ -604,8 +645,9 @@ function wireIpcHandlers() {
   ipcMain.handle(
     PROFILES_DELETE_CHANNEL,
     (_event, payload: unknown): { ok: true } | { ok: false; message: string } => {
-      const id = (payload as { id?: unknown })?.id;
-      if (typeof id !== "string") return { ok: false, message: "ID gerekli." };
+      const parsed = ipcProfilesDeleteRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("ID gerekli.");
+      const id = parsed.data.id;
       const profiles = loadProfiles().filter((p) => p.id !== id);
       writeProfiles(profiles);
       return { ok: true };
@@ -671,14 +713,13 @@ function wireIpcHandlers() {
       _event,
       payload: unknown
     ): Promise<{ ok: true; outputDir: string } | { ok: false; message: string }> => {
-      const p = payload as { inputPath?: unknown; format?: unknown; dpi?: unknown };
-      const inputPath = p?.inputPath;
-      const format = typeof p?.format === "string" ? p.format : "png";
-      const dpi = typeof p?.dpi === "number" && p.dpi > 0 ? p.dpi : 150;
-
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "PDF dosyası gerekli." };
-      }
+      const parsed = ipcPdfConvertRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Geçersiz PDF isteği.");
+      const guard = checkInputPath(parsed.data.inputPath, "PDF dosyası");
+      if (!guard.ok) return guardFail(guard.reason);
+      const inputPath = guard.path;
+      // `format` enum: `-${format}` pdftoppm'e bayrak olarak geçiyor.
+      const { format, dpi } = parsed.data;
 
       // Determine output directory: same as input, with subdir
       const inputDir = path.dirname(inputPath);
@@ -730,23 +771,16 @@ function wireIpcHandlers() {
       event,
       payload: unknown
     ): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const p = payload as {
-        inputPaths?: unknown;
-        outputPath?: unknown;
-        mode?: unknown;
-        outputEncoder?: unknown;
-      };
-      const inputPaths = p?.inputPaths;
-      const outputPath = p?.outputPath;
-      const mode = (p?.mode as string) ?? "concat";
-      const encoder = (p?.outputEncoder as string) ?? "libmp3lame";
-
-      if (!Array.isArray(inputPaths) || inputPaths.length < 2) {
-        return { ok: false, message: "En az 2 ses dosyası gerekli." };
-      }
-      if (typeof outputPath !== "string" || !outputPath) {
-        return { ok: false, message: "Çıktı yolu gerekli." };
-      }
+      const parsed = ipcAudioMergeRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("En az 2 ses dosyası ve geçerli bir çıktı yolu gerekli.");
+      const inGuard = checkInputPaths(parsed.data.inputPaths, "Ses dosyası");
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const outGuard = checkOutputPath(parsed.data.outputPath);
+      if (!outGuard.ok) return guardFail(outGuard.reason);
+      const inputPaths = inGuard.paths;
+      const outputPath = outGuard.path;
+      const mode = parsed.data.mode;
+      const encoder = parsed.data.outputEncoder;
 
       let executable: string;
       try {
@@ -756,7 +790,7 @@ function wireIpcHandlers() {
       }
 
       const inputs: string[] = [];
-      for (const p of inputPaths as string[]) {
+      for (const p of inputPaths) {
         inputs.push("-i", p);
       }
 
@@ -809,16 +843,14 @@ function wireIpcHandlers() {
       event,
       payload: unknown
     ): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const p = payload as { inputPaths?: unknown; outputPath?: unknown };
-      const inputPaths = p?.inputPaths;
-      const outputPath = p?.outputPath;
-
-      if (!Array.isArray(inputPaths) || inputPaths.length < 2) {
-        return { ok: false, message: "En az 2 video dosyası gerekli." };
-      }
-      if (typeof outputPath !== "string" || !outputPath) {
-        return { ok: false, message: "Çıktı yolu gerekli." };
-      }
+      const parsed = ipcVideoMergeRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("En az 2 video dosyası ve geçerli bir çıktı yolu gerekli.");
+      const inGuard = checkInputPaths(parsed.data.inputPaths, "Video dosyası");
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const outGuard = checkOutputPath(parsed.data.outputPath);
+      if (!outGuard.ok) return guardFail(outGuard.reason);
+      const inputPaths = inGuard.paths;
+      const outputPath = outGuard.path;
 
       let executable: string;
       try {
@@ -869,23 +901,15 @@ function wireIpcHandlers() {
       event,
       payload: unknown
     ): Promise<{ ok: true; outputDir: string } | { ok: false; message: string }> => {
-      const p = payload as {
-        inputPath?: unknown;
-        outputDir?: unknown;
-        intervalSec?: unknown;
-        format?: unknown;
-      };
-      const inputPath = p?.inputPath;
-      const outputDir = p?.outputDir;
-      const intervalSec = typeof p?.intervalSec === "number" ? p.intervalSec : 1;
-      const format = (p?.format as string) ?? "png";
-
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "Giriş dosyası gerekli." };
-      }
-      if (typeof outputDir !== "string" || !outputDir) {
-        return { ok: false, message: "Çıktı klasörü gerekli." };
-      }
+      const parsed = ipcFrameExtractRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Geçersiz kare çıkarma isteği.");
+      const inGuard = checkInputPath(parsed.data.inputPath);
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const outGuard = checkOutputPath(parsed.data.outputDir, "Çıktı klasörü");
+      if (!outGuard.ok) return guardFail(outGuard.reason);
+      const inputPath = inGuard.path;
+      const outputDir = outGuard.path;
+      const { intervalSec, format } = parsed.data;
 
       let executable: string;
       try {
@@ -932,25 +956,15 @@ function wireIpcHandlers() {
       event,
       payload: unknown
     ): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const p = payload as {
-        inputPath?: unknown;
-        outputPath?: unknown;
-        fps?: unknown;
-        width?: unknown;
-        loop?: unknown;
-      };
-      const inputPath = p?.inputPath;
-      const outputPath = p?.outputPath;
-      const fps = typeof p?.fps === "number" && p.fps > 0 ? p.fps : 10;
-      const width = typeof p?.width === "number" && p.width > 0 ? p.width : 480;
-      const loop = typeof p?.loop === "number" ? p.loop : 0;
-
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "Giriş dosyası gerekli." };
-      }
-      if (typeof outputPath !== "string" || !outputPath) {
-        return { ok: false, message: "Çıktı dosyası gerekli." };
-      }
+      const parsed = ipcGifConvertRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Geçersiz GIF isteği.");
+      const inGuard = checkInputPath(parsed.data.inputPath);
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const outGuard = checkOutputPath(parsed.data.outputPath, "Çıktı dosyası");
+      if (!outGuard.ok) return guardFail(outGuard.reason);
+      const inputPath = inGuard.path;
+      const outputPath = outGuard.path;
+      const { fps, width, loop } = parsed.data;
 
       let executable: string;
       try {
@@ -1002,25 +1016,15 @@ function wireIpcHandlers() {
       event,
       payload: unknown
     ): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const p = payload as {
-        inputPath?: unknown;
-        outputPath?: unknown;
-        fps?: unknown;
-        width?: unknown;
-        plays?: unknown;
-      };
-      const inputPath = p?.inputPath;
-      const outputPath = p?.outputPath;
-      const fps = typeof p?.fps === "number" && p.fps > 0 ? p.fps : 15;
-      const width = typeof p?.width === "number" && p.width > 0 ? p.width : 480;
-      const plays = typeof p?.plays === "number" ? p.plays : 0;
-
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "Giriş dosyası gerekli." };
-      }
-      if (typeof outputPath !== "string" || !outputPath) {
-        return { ok: false, message: "Çıktı dosyası gerekli." };
-      }
+      const parsed = ipcApngConvertRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Geçersiz APNG isteği.");
+      const inGuard = checkInputPath(parsed.data.inputPath);
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const outGuard = checkOutputPath(parsed.data.outputPath, "Çıktı dosyası");
+      if (!outGuard.ok) return guardFail(outGuard.reason);
+      const inputPath = inGuard.path;
+      const outputPath = outGuard.path;
+      const { fps, width, plays } = parsed.data;
 
       let executable: string;
       try {
@@ -1071,13 +1075,14 @@ function wireIpcHandlers() {
       | { ok: true; streams: { index: number; codecName: string; title: string; language: string }[] }
       | { ok: false; message: string }
     > => {
-      const inputPath = (payload as { inputPath?: unknown })?.inputPath;
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "Giriş dosyası gerekli." };
-      }
+      const parsed = ipcSubtitleProbeRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Giriş dosyası gerekli.");
+      const inGuard = checkInputPath(parsed.data.inputPath);
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const inputPath = inGuard.path;
       let ffprobeExec: string;
       try {
-        ffprobeExec = resolveFfprobeExecutable(undefined);
+        ffprobeExec = resolveFfprobeExecutable(lpcSettings.ffmpegBinary);
       } catch (e) {
         return { ok: false, message: e instanceof Error ? e.message : String(e) };
       }
@@ -1108,17 +1113,15 @@ function wireIpcHandlers() {
       _event,
       payload: unknown
     ): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const p = payload as { inputPath?: unknown; streamIndex?: unknown; outputPath?: unknown; format?: unknown };
-      const inputPath = p?.inputPath;
-      const streamIndex = typeof p?.streamIndex === "number" ? p.streamIndex : 0;
-      const outputPath = p?.outputPath;
-
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "Giriş dosyası gerekli." };
-      }
-      if (typeof outputPath !== "string" || !outputPath) {
-        return { ok: false, message: "Çıktı dosyası gerekli." };
-      }
+      const parsed = ipcSubtitleExtractRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Geçersiz altyazı isteği.");
+      const inGuard = checkInputPath(parsed.data.inputPath);
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const outGuard = checkOutputPath(parsed.data.outputPath, "Çıktı dosyası");
+      if (!outGuard.ok) return guardFail(outGuard.reason);
+      const inputPath = inGuard.path;
+      const outputPath = outGuard.path;
+      const streamIndex = parsed.data.streamIndex;
 
       let executable: string;
       try {
@@ -1148,25 +1151,15 @@ function wireIpcHandlers() {
       event,
       payload: unknown
     ): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const p = payload as {
-        inputPath?: unknown;
-        outputPath?: unknown;
-        startSec?: unknown;
-        endSec?: unknown;
-        streamCopy?: unknown;
-      };
-      const inputPath = p?.inputPath;
-      const outputPath = p?.outputPath;
-      const startSec = typeof p?.startSec === "number" ? p.startSec : 0;
-      const endSec = typeof p?.endSec === "number" ? p.endSec : null;
-      const streamCopy = p?.streamCopy !== false;
-
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "Giriş dosyası gerekli." };
-      }
-      if (typeof outputPath !== "string" || !outputPath) {
-        return { ok: false, message: "Çıktı dosyası gerekli." };
-      }
+      const parsed = ipcVideoTrimRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Geçersiz kırpma isteği.");
+      const inGuard = checkInputPath(parsed.data.inputPath);
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const outGuard = checkOutputPath(parsed.data.outputPath, "Çıktı dosyası");
+      if (!outGuard.ok) return guardFail(outGuard.reason);
+      const inputPath = inGuard.path;
+      const outputPath = outGuard.path;
+      const { startSec, endSec, streamCopy } = parsed.data;
 
       let executable: string;
       try {
@@ -1211,25 +1204,15 @@ function wireIpcHandlers() {
       event,
       payload: unknown
     ): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const p = payload as {
-        inputPath?: unknown;
-        outputPath?: unknown;
-        targetLufs?: unknown;
-        truePeak?: unknown;
-        lra?: unknown;
-      };
-      const inputPath = p?.inputPath;
-      const outputPath = p?.outputPath;
-      const targetLufs = typeof p?.targetLufs === "number" ? p.targetLufs : -14;
-      const truePeak = typeof p?.truePeak === "number" ? p.truePeak : -1;
-      const lra = typeof p?.lra === "number" ? p.lra : 11;
-
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "Giriş dosyası gerekli." };
-      }
-      if (typeof outputPath !== "string" || !outputPath) {
-        return { ok: false, message: "Çıktı dosyası gerekli." };
-      }
+      const parsed = ipcAudioNormalizeRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Geçersiz ses normalizasyon isteği.");
+      const inGuard = checkInputPath(parsed.data.inputPath);
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const outGuard = checkOutputPath(parsed.data.outputPath, "Çıktı dosyası");
+      if (!outGuard.ok) return guardFail(outGuard.reason);
+      const inputPath = inGuard.path;
+      const outputPath = outGuard.path;
+      const { targetLufs, truePeak, lra } = parsed.data;
 
       let executable: string;
       try {
@@ -1275,32 +1258,20 @@ function wireIpcHandlers() {
       event,
       payload: unknown
     ): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const p = payload as {
-        inputPath?: unknown;
-        outputPath?: unknown;
-        mode?: unknown;
-        text?: unknown;
-        imagePath?: unknown;
-        position?: unknown;
-        opacity?: unknown;
-        fontSize?: unknown;
-        fontColor?: unknown;
-      };
-      const inputPath = p?.inputPath;
-      const outputPath = p?.outputPath;
-      const mode = String(p?.mode ?? "text");
-      const text = String(p?.text ?? "Filigran");
-      const imagePath = p?.imagePath;
-      const position = String(p?.position ?? "bottomright");
-      const opacity = typeof p?.opacity === "number" ? Math.min(1, Math.max(0, p.opacity)) : 0.5;
-      const fontSize = typeof p?.fontSize === "number" ? p.fontSize : 36;
-      const fontColor = String(p?.fontColor ?? "white");
-
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "Giriş dosyası gerekli." };
-      }
-      if (typeof outputPath !== "string" || !outputPath) {
-        return { ok: false, message: "Çıktı dosyası gerekli." };
+      const parsed = ipcWatermarkRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Geçersiz filigran isteği.");
+      const inGuard = checkInputPath(parsed.data.inputPath);
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const outGuard = checkOutputPath(parsed.data.outputPath, "Çıktı dosyası");
+      if (!outGuard.ok) return guardFail(outGuard.reason);
+      const inputPath = inGuard.path;
+      const outputPath = outGuard.path;
+      const { mode, text, position, opacity, fontSize, fontColor } = parsed.data;
+      let imagePath: string | undefined;
+      if (mode === "image") {
+        const imgGuard = checkInputPath(parsed.data.imagePath, "Filigran görseli");
+        if (!imgGuard.ok) return guardFail(imgGuard.reason);
+        imagePath = imgGuard.path;
       }
 
       let executable: string;
@@ -1321,7 +1292,8 @@ function wireIpcHandlers() {
       const overlayPos = posMap[position] ?? posMap["bottomright"]!;
 
       let args: string[];
-      if (mode === "image" && typeof imagePath === "string" && imagePath) {
+      let textFilePath: string | null = null;
+      if (mode === "image" && imagePath) {
         args = [
           "-i", inputPath,
           "-i", imagePath,
@@ -1331,8 +1303,19 @@ function wireIpcHandlers() {
           "-y", outputPath
         ];
       } else {
+        // Metin filtergraph'a GÖMÜLMÜYOR, `textfile=` ile geçiriliyor.
+        //
+        // Eski kod yalnızca `'` kaçırıyordu; içinde `:` geçen bir filigran
+        // sessizce bozuluyordu — "12:34 100% it's" yazan bir filigran karede
+        // tek bir "b" harfi olarak çıkıyordu (kare ile doğrulandı). drawtext'in
+        // `text=` seçeneği için `:` ve `%` karakterlerinin güvenilir bir kaçırma
+        // biçimi yok; `textfile=` + `expansion=none` metni harfi harfine
+        // basıyor ve kaçırma sorununu tümüyle ortadan kaldırıyor (DENETIM.md D-07).
+        textFilePath = `${outputPath}.watermark-text.txt`;
+        await fs.promises.writeFile(textFilePath, text, "utf8");
         const drawtext = [
-          `text='${text.replace(/'/g, "\\'")}'`,
+          `textfile=${escapeFilterPath(textFilePath)}`,
+          "expansion=none",
           `fontsize=${fontSize}`,
           `fontcolor=${fontColor}@${opacity}`,
           `x=${overlayPos.split(":")[0]}`,
@@ -1362,6 +1345,9 @@ function wireIpcHandlers() {
       });
       currentConvertAbort = null;
       setTaskbarProgress(null);
+      if (textFilePath) {
+        await fs.promises.rm(textFilePath, { force: true }).catch(() => undefined);
+      }
       if (run.ok) {
         updateTrayMenu("Hazır");
         notifyCompletion("Filigran Eklendi", `${String(outputPath).split(/[/\\]/).pop()} kaydedildi.`);
@@ -1379,11 +1365,11 @@ function wireIpcHandlers() {
       _event,
       payload: unknown
     ): Promise<{ ok: true; tags: Record<string, string> } | { ok: false; message: string }> => {
-      const p = payload as { inputPath?: unknown };
-      const inputPath = p?.inputPath;
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "Giriş dosyası gerekli." };
-      }
+      const parsed = ipcMetadataReadRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) return guardFail("Giriş dosyası gerekli.");
+      const inGuard = checkInputPath(parsed.data.inputPath);
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const inputPath = inGuard.path;
       let ffprobeExec: string;
       try {
         ffprobeExec = resolveFfprobeExecutable(lpcSettings.ffmpegBinary);
@@ -1409,20 +1395,17 @@ function wireIpcHandlers() {
       _event,
       payload: unknown
     ): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const p = payload as { inputPath?: unknown; outputPath?: unknown; tags?: unknown };
-      const inputPath = p?.inputPath;
-      const outputPath = p?.outputPath;
-      const tags = p?.tags;
-
-      if (typeof inputPath !== "string" || !inputPath) {
-        return { ok: false, message: "Giriş dosyası gerekli." };
+      const parsed = ipcMetadataWriteRequestSchema.safeParse(payload ?? {});
+      if (!parsed.success) {
+        return guardFail(parsed.error.issues[0]?.message ?? "Geçersiz etiket paketi.");
       }
-      if (typeof outputPath !== "string" || !outputPath) {
-        return { ok: false, message: "Çıktı dosyası gerekli." };
-      }
-      if (typeof tags !== "object" || tags === null) {
-        return { ok: false, message: "Etiketler gerekli." };
-      }
+      const inGuard = checkInputPath(parsed.data.inputPath);
+      if (!inGuard.ok) return guardFail(inGuard.reason);
+      const outGuard = checkOutputPath(parsed.data.outputPath, "Çıktı dosyası");
+      if (!outGuard.ok) return guardFail(outGuard.reason);
+      const inputPath = inGuard.path;
+      const outputPath = outGuard.path;
+      const tags = parsed.data.tags;
 
       let executable: string;
       try {
@@ -1432,10 +1415,8 @@ function wireIpcHandlers() {
       }
 
       const args = ["-i", inputPath];
-      for (const [k, v] of Object.entries(tags as Record<string, string>)) {
-        if (typeof v === "string") {
-          args.push("-metadata", `${k}=${v}`);
-        }
+      for (const [k, v] of Object.entries(tags)) {
+        args.push("-metadata", `${k}=${v}`);
       }
       args.push("-c", "copy", "-y", outputPath);
 
@@ -1447,6 +1428,42 @@ function wireIpcHandlers() {
       return { ok: false, message: result.stderr };
     }
   );
+}
+
+/**
+ * İçerik Güvenliği Politikası (DENETIM.md D-07).
+ *
+ * `'unsafe-inline'` script için kaçınılmaz: SvelteKit'in statik çıktısı
+ * hidrasyonu satır içi bir `<script>` ile başlatıyor. Geri kalan her şey
+ * kapalı — özellikle `connect-src 'self'`, çünkü bu uygulamanın satış noktası
+ * medyanın makineden çıkmaması. Önizlemeler `data:`/`blob:`/`file:` üzerinden
+ * geldiği için yalnızca img/media bunlara açık.
+ */
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: file:",
+  "media-src 'self' data: blob: file:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "worker-src 'self' blob:",
+  "base-uri 'none'",
+  "form-action 'none'"
+].join("; ");
+
+/** Uygulamanın kendi içeriğinin yaşadığı kökenler. Başka hiçbiri gezinemez. */
+function isTrustedOrigin(rawUrl: string, devUrl: string): boolean {
+  try {
+    const u = new URL(rawUrl);
+    if (u.protocol === "lpc:") return true;
+    if (devUrl.length > 0 && rawUrl.startsWith(devUrl)) return true;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 async function createWindow(): Promise<void> {
@@ -1462,8 +1479,55 @@ async function createWindow(): Promise<void> {
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // preload yalnızca Electron API'si kullanıyor (contextBridge/ipcRenderer/
+      // webUtils), bu yüzden sandbox açılabiliyor — renderer süreci Node'suz
+      // kalıyor ve OS seviyesinde kısıtlanıyor.
+      sandbox: true,
+      webviewTag: false,
+      // Renderer'ın `file://` üzerinden rastgele yerel dosya çekmesini engeller;
+      // önizleme yolları zaten ana süreçten data: URL olarak geliyor.
+      allowRunningInsecureContent: false
     }
+  });
+
+  // CSP'yi başlıkla veriyoruz: statik HTML'e meta etiketi gömmek SvelteKit
+  // build'ini her sürümde elle düzeltmek demekti.
+  window.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [
+          devUrl.length > 0
+            // Vite HMR websocket'i ve eval tabanlı dönüşümleri geliştirmede
+            // gerekli; paketlenmiş sürüme sızmasın diye ayrı tutuluyor.
+            ? CONTENT_SECURITY_POLICY.replace("script-src 'self' 'unsafe-inline'", "script-src 'self' 'unsafe-inline' 'unsafe-eval'").replace("connect-src 'self'", "connect-src 'self' ws: http://localhost:*")
+            : CONTENT_SECURITY_POLICY
+        ]
+      }
+    });
+  });
+
+  // Yeni pencere açma denemesi = uygulamanın kendi akışı değil. Harici bağlantı
+  // kullanıcının tarayıcısına gider, Electron penceresine değil.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https://")) {
+      void shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
+
+  // Güvenilmeyen bir kökene gezinme, ele geçirilmiş bir renderer'ın preload
+  // köprüsünü uzak bir sayfaya taşımasının en kısa yoludur.
+  window.webContents.on("will-navigate", (event, url) => {
+    if (!isTrustedOrigin(url, devUrl)) {
+      event.preventDefault();
+      if (url.startsWith("https://")) void shell.openExternal(url);
+    }
+  });
+
+  window.webContents.on("will-attach-webview", (event) => {
+    event.preventDefault();
   });
 
   mainWindow = window;
@@ -1487,8 +1551,13 @@ async function bootstrap(): Promise<void> {
     const { pathname } = new URL(req.url);
     const filePath = pathname === "/" || pathname === ""
       ? path.join(buildDir, "index.html")
-      : path.join(buildDir, pathname);
-    return net.fetch(pathToFileURL(filePath).toString());
+      : path.join(buildDir, decodeURIComponent(pathname));
+    // Statik sunucu build dizininden dışarı çıkamaz (DENETIM.md D-07).
+    const resolved = path.resolve(filePath);
+    if (resolved !== path.resolve(buildDir) && !resolved.startsWith(path.resolve(buildDir) + path.sep)) {
+      return new Response("Not found", { status: 404 });
+    }
+    return net.fetch(pathToFileURL(resolved).toString());
   });
 
   loadSettings();
