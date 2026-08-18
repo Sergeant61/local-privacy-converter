@@ -33,10 +33,14 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # release.yml'in aksine frozen: kilit dosyası ile package.json'un ayrışması
-      # sürüm çıkarken değil, burada yakalanmalı.
+      # NOT: --frozen-lockfile olmalıydı, ama depodaki pnpm-lock.yaml hâlâ
+      # lockfileVersion 5.4 (pnpm 7) formatında; beyan edilen pnpm@9.15.4 onu
+      # "not compatible" diyerek yok sayıyor. release.yml de bu yüzden
+      # --no-frozen-lockfile kullanıyor. Kilit dosyası pnpm 9 ile yeniden
+      # üretilene kadar (DENETIM.md D-24) bağımlılıklar her koşumda taze
+      # çözülüyor — kapı çalışır ama tekrarlanabilir değil.
       - name: Bağımlılıkları kur
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Tür kontrolü
         run: pnpm typecheck
