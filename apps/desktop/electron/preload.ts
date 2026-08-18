@@ -160,7 +160,7 @@ contextBridge.exposeInMainWorld("lfc", {
   }) => ipcRenderer.invoke(SETTINGS_SET_CHANNEL, patch),
   subtitleProbe: (inputPath: string) =>
     ipcRenderer.invoke(SUBTITLE_PROBE_CHANNEL, { inputPath }),
-  subtitleExtract: (req: { inputPath: string; streamIndex: number; outputPath: string }) =>
+  subtitleExtract: (req: { inputPath: string; streamIndex: number; outputPath: string; format?: "srt" | "ass" | "vtt" }) =>
     ipcRenderer.invoke(SUBTITLE_EXTRACT_CHANNEL, req),
   videoTrim: (req: {
     inputPath: string;

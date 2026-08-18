@@ -28,13 +28,13 @@ Bulgu ID'leri (`D-01` … `D-24`) sabittir, yeniden numaralandırma.
 | Önem | Adet | Kapatılan |
 |---|---|---|
 | 🔴 Kritik | 1 | **1** |
-| 🟠 Yüksek | 6 | **4** |
+| 🟠 Yüksek | 6 | **6** |
 | 🟡 Orta | 17 | **1** |
-| **Toplam** | **24** | **6** |
+| **Toplam** | **24** | **8** |
 
-**Kapatılanlar (18 Ağustos 2026):** D-01 · D-02, D-03, D-04 — üçü de gerçek FFmpeg koşumuyla doğrulandı · D-07 · D-21 — CI kapısı ve duman testleri eklendi.
+**Kapatılanlar (18 Ağustos 2026):** D-01 · D-02, D-03, D-04 · D-05, D-06 · D-07 · D-21. Kritik ve yüksek bulguların tamamı kapandı; hepsi gerçek FFmpeg koşumuyla doğrulandı.
 
-Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uyarı** · **62 test geçiyor** (34 ffmpeg-core + 28 validators) · CI kapısı **aktif**
+Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uyarı** · **101 test geçiyor** (73 ffmpeg-core + 28 validators) · CI kapısı **aktif**
 
 ---
 
@@ -82,13 +82,33 @@ Temel ölçümler: `pnpm typecheck` **8/8 temiz** · `pnpm lint` **0 hata / 2 uy
   > **Etki:** Discord 10 MB, WhatsApp 16 MB, Messenger 25 MB, Instagram, Telegram
   > **Öneri:** `-fs` kaldırılsın; hedef boyut ÷ süre üzerinden bitrate hesaplanıp iki geçişli encode yapılsın.
 
-- [ ] **D-05** — Video birleştirme uyumsuz girdilerde sessizce bozuk dosya üretiyor
+- [x] **D-05** — Video birleştirme uyumsuz girdilerde sessizce bozuk dosya üretiyor
+  > **✅ Kapatıldı:** 2026-08-18 · [ffmpeg-core/src/merge-args.ts](packages/ffmpeg-core/src/merge-args.ts) · [main.ts](apps/desktop/electron/main.ts)
+  > **Ne yapıldı:** Girdiler önce ffprobe ile özetleniyor (çözünürlük, codec, piksel biçimi, kare hızı, ses codec/örnekleme/kanal). Hepsi uyumluysa hızlı yol — concat demuxer + `-c copy` — korunuyor; israf yok. Uyuşmazlıkta `filter_complex concat`'e düşülüyor: her video en büyük kareye ölçekleniyor (en-boy oranı korunup kalan alan siyahla dolduruluyor, `setsar=1`, ortak fps), her ses ortak biçime getiriliyor, **sesi olmayan girdiye kendi süresi kadar sessizlik üretiliyor** (`anullsrc` + `atrim`). Böylece concat tüm akışları eşit alıyor, akış düşmesi mümkün olmuyor. 29.97 ile 30 aynı sayılıyor — bu fark için yeniden kodlamaya değmez.
+  > **Doğrulama (gerçek koşum, aynı fixture çifti — 1920×1080@30 + 640×480@25):**
+  > | | eski (`-c copy`) | yeni |
+  > |---|---|---|
+  > | video akışındaki kare boyutları | **1920×1080 ve 640×480** (akış ortasında değişiyor) | 1920×1080 (tek) |
+  > | ffmpeg çıkış kodu | 0 — hata yok | 0 |
+  > | handler cevabı | `{ok:true}` | `{ok:true}` |
+  > 
+  > Akış içinde çözünürlük değişimi tam da "sessizce bozuk dosya"nın kendisi: ffmpeg şikâyet etmiyor, kullanıcı başarı bildirimi alıyor, oynatıcıların çoğu ikinci klipte bozuluyor. Sessiz girdi senaryosu da sınandı: 4 sn sesli + 3 sn sessiz → 7.03 sn, **1 video + 1 ses** akışı. Uyumlu çift (s1+s2) hızlı yolu kullanıyor: 4.02 sn, yeniden kodlama yok. Ayrıca 18 birim testi.
   > **Konum:** [apps/desktop/electron/main.ts:780](apps/desktop/electron/main.ts#L780)
   > **Bulgu:** concat demuxer + `-c copy`, ön kontrol yok. Farklı çözünürlük/codec/fps'te ffmpeg hata vermiyor, handler `{ok:true}` dönüyor, kullanıcı "başarılı" bildirimi alıyor — ama ikinci klip yanlış çözünürlükte, yanlış hızda ve **ses akışı düşmüş** halde.
   > **Kanıt:** 1920x1080 + 640x480 → exit 0, tek video akışı, süre 9.6 s (olmalı 8.0), çıktıda ses yok
   > **Öneri:** Probe ile ön kontrol; uyuşmazlıkta filter_complex concat'e düş ya da kullanıcıyı uyar.
 
-- [ ] **D-06** — Altyazı çıkarma en yaygın durumda çalışmıyor
+- [x] **D-06** — Altyazı çıkarma en yaygın durumda çalışmıyor
+  > **✅ Kapatıldı:** 2026-08-18 · [ffmpeg-core/src/subtitle-args.ts](packages/ffmpeg-core/src/subtitle-args.ts) · [main.ts](apps/desktop/electron/main.ts) · [subtitle/+page.svelte](apps/desktop/src/routes/subtitle/+page.svelte)
+  > **Ne yapıldı:** Hedef format artık okunuyor ve gerçekten uygulanıyor: `srt` → `-c:s srt`, `ass` → `-c:s ass`, `vtt` → `-c:s webvtt`. `copy` yalnızca kaynak zaten hedef formatsa kullanılıyor (kayıpsız ve hızlı); `subrip`/`ssa` gibi eş adlar tanınıyor. Görüntü tabanlı altyazılar (PGS, VobSub, DVB, XSUB) metne çevrilemez — sessizce bozuk dosya üretmek yerine anlaşılır bir hata dönülüyor. Arayüz seçilen formatı IPC'ye açıkça gönderiyor; göndermezse çıktı uzantısından türetiliyor.
+  > **Doğrulama (gerçek koşum, mov_text altyazılı MP4 — MP4'ün standart altyazı codec'i):**
+  > | format | eski (`-c:s copy`) | yeni |
+  > |---|---|---|
+  > | SRT | **0 bayt** — `Unsupported subtitles codec: mov_text` | 102 bayt, metin doğru |
+  > | ASS | **0 bayt** — `ass muxer supports only codec ass` | 716 bayt, `[Script Info]` başlıklı |
+  > | VTT | **0 bayt** — `webvtt muxer supports only codec webvtt` | 93 bayt, `WEBVTT` başlıklı |
+  > 
+  > Çıkarılan SRT içeriği kaynakla birebir: `Merhaba dünya` ve `İkinci satır: test`, zamanlamalar dahil. Ayrıca 21 birim testi.
   > **Konum:** [apps/desktop/electron/main.ts:1080](apps/desktop/electron/main.ts#L1080)
   > **Bulgu:** Handler sabit `-c:s copy` kullanıyor ve payload'daki `format` alanını **hiç okumuyor**. Arayüz SRT / ASS / VTT sunuyor ama hiçbirine dönüştürme yapılmıyor.
   > **Kanıt:** mov_text altyazılı MP4 (MP4'ün standart altyazı codec'i) → üç formatta da boş dosya, `Could not write header`. `-c:s copy` kaldırılınca aynı komut düzgün SRT üretiyor.

@@ -6,6 +6,16 @@ import { spawnText } from "./spawn-text";
 export interface FfprobeStreamJson {
   codec_type?: string;
   codec_name?: string;
+  /** Video akışları için; birleştirme uyum kontrolünde kullanılır (DENETIM.md D-05). */
+  width?: number;
+  height?: number;
+  pix_fmt?: string;
+  /** "30000/1001" biçiminde kesir. */
+  r_frame_rate?: string;
+  /** Ses akışları için. */
+  sample_rate?: string;
+  channels?: number;
+  tags?: Record<string, string>;
 }
 
 export interface FfprobeFormatJson {

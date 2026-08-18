@@ -99,7 +99,8 @@
     const r = await window.lfc.subtitleExtract({
       inputPath: filePath,
       streamIndex: selectedIndex,
-      outputPath: outPath
+      outputPath: outPath,
+      format: outputFormat
     });
     busy = false;
 
