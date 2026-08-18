@@ -132,7 +132,6 @@
   <section class="card">
     <h2 class="card-title">Video Dosyaları ({files.length}/∞ — en az 2)</h2>
 
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="drop-zone"
       class:drag={isDragging}

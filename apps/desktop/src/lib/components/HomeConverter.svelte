@@ -183,6 +183,8 @@
 
   const groupedTargets = $derived.by(() => {
     const general = targetsWithAvailability.filter((r) => !r.profile.socialMeta);
+    // Yerel toplama tablosu: $derived.by icinde kurulup atiliyor, reaktif durum degil.
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const platforms = new Map<string, typeof targetsWithAvailability>();
     for (const row of targetsWithAvailability.filter((r) => !!r.profile.socialMeta)) {
       const key = row.profile.socialMeta!.platformLabelTr;
@@ -892,21 +894,8 @@
       </details>
     {:else}
       <button type="button" class="profile-add-btn-inline" onclick={() => (showProfileSave = true)}>
-        {#if !showProfileSave}+ Profil kaydet{/if}
+        + Profil kaydet
       </button>
-      {#if showProfileSave}
-        <div class="profile-save-row">
-          <input
-            type="text"
-            class="profile-name-input"
-            placeholder="Profil adı…"
-            bind:value={profileSaveName}
-            onkeydown={(e) => e.key === "Enter" && void saveCurrentProfile()}
-          />
-          <button type="button" class="profile-load-btn" onclick={() => void saveCurrentProfile()} disabled={!profileSaveName.trim()}>Kaydet</button>
-          <button type="button" class="profile-del-btn" onclick={() => { showProfileSave = false; profileSaveName = ""; }}>İptal</button>
-        </div>
-      {/if}
     {/if}
 
     <div class="action-row">

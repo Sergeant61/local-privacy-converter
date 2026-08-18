@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SvelteSet } from "svelte/reactivity";
   import { browser } from "$app/environment";
   import { getTargetsForKind, targetProfileToJobHints } from "@lfc/media-formats";
   import type { TargetProfile } from "@lfc/media-formats";
@@ -13,7 +14,7 @@
   let mediaKind = $state<MediaKind>("video");
 
   let availableProfiles = $state<TargetProfile[]>([]);
-  let selectedIds = $state<Set<string>>(new Set());
+  let selectedIds = new SvelteSet<string>();
 
   type JobStatus = "pending" | "running" | "done" | "error";
   type OutputJob = {
@@ -38,7 +39,7 @@
     fileError = null;
     filePath = null;
     fileLabel = null;
-    selectedIds = new Set();
+    selectedIds.clear();
     jobs = [];
 
     if (!hasLfc) return;
@@ -81,7 +82,6 @@
     } else {
       selectedIds.add(id);
     }
-    selectedIds = new Set(selectedIds);
   }
 
   async function startAll() {
@@ -164,7 +164,6 @@
 
   <section class="card">
     <h2 class="card-title">Giriş Dosyası</h2>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="drop-zone"
       class:drag={isDragging}
