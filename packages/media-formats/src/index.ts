@@ -5,5 +5,6 @@ export * from "./input-profile";
 export * from "./job-hints";
 export * from "./job-spec";
 export * from "./probe-kinds";
+export * from "./semver";
 export * from "./target-profiles";
 export * from "./ui-meta";

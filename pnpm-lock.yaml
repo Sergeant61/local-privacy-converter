@@ -83,22 +83,6 @@ importers:
       vite: 8.0.11_kc5euupyruvompstr6epciy3hy
       wait-on: 9.0.5
 
-  packages/auth:
-    specifiers:
-      '@lfc/config': workspace:*
-      typescript: ~5.7.3
-    devDependencies:
-      '@lfc/config': link:../config
-      typescript: 5.7.3
-
-  packages/billing:
-    specifiers:
-      '@lfc/config': workspace:*
-      typescript: ~5.7.3
-    devDependencies:
-      '@lfc/config': link:../config
-      typescript: 5.7.3
-
   packages/config:
     specifiers: {}
 
