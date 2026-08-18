@@ -42,11 +42,10 @@ describe("D-02: en-boy oranı crop filtresi", () => {
     const filter = vf(buildFfmpegArgs({ ...base, videoHints: { aspectRatio: ratio } })) ?? "";
 
     // ffmpeg filtreleri KAÇIRILMAMIŞ virgülden böler. Yalnızca oran verildiğinde
-    // zincir tam iki segmenttir: crop + çift boyut scale'i. Kaçırılmamış fazladan
-    // bir virgül, crop ifadesinin ortadan bölündüğü anlamına gelir.
+    // zincir crop + çift boyut scale'i + setsar'dır. Kaçırılmamış fazladan bir
+    // virgül, crop ifadesinin ortadan bölündüğü anlamına gelir.
     const segments = filter.split(/(?<!\\),/);
-    expect(segments).toHaveLength(2);
-    expect(segments[0]).toMatch(/^crop=/);
+    expect(segments).toEqual([expect.stringMatching(/^crop=/), "scale=trunc(iw/2)*2:trunc(ih/2)*2", "setsar=1"]);
     expect(segments[0]).toContain("\\,");
   });
 
@@ -235,5 +234,191 @@ describe("argüman dizisi şekli", () => {
     const args = buildFfmpegArgs({ ...base, outputPath: nasty });
     expect(args.at(-1)).toBe(nasty);
     expect(args.filter((a) => a.includes("PWNED"))).toHaveLength(1);
+  });
+});
+
+// ── D-08 ────────────────────────────────────────────────────────────────────
+// Her iki boyut da verildiğinde çıplak `scale=W:H` görüntüyü esnetir. Dikey
+// sosyal presetler bu yüzden 1080×1920 piksel ölçüsünü tutturup içeriği
+// eziyordu: ölçümde `social-ig-stories` → 1080x1920 ama `dar=16:9`.
+describe("D-08: iki boyut verildiğinde kareye oturtma", () => {
+  const sized = (extra: Partial<NonNullable<ConvertJobSpec["videoHints"]>> = {}) =>
+    vf(buildFfmpegArgs({ ...base, videoHints: { width: 1080, height: 1920, ...extra } })) ?? "";
+
+  it("varsayılan olarak doldurur ve kırpar — oranı bozmaz", () => {
+    const filter = sized();
+    expect(filter).toContain("force_original_aspect_ratio=increase");
+    expect(filter).toContain("crop=1080:1920");
+    expect(filter).not.toMatch(/scale=1080:1920(,|$)/);
+  });
+
+  it("her zaman setsar=1 ekler — SAR bozulunca oynatıcı kareyi yamuk gösterir", () => {
+    expect(sized()).toContain("setsar=1");
+    expect(sized({ fit: "contain" })).toContain("setsar=1");
+    expect(sized({ fit: "stretch" })).toContain("setsar=1");
+  });
+
+  it("contain modunda sığdırır ve siyahla doldurur", () => {
+    const filter = sized({ fit: "contain" });
+    expect(filter).toContain("force_original_aspect_ratio=decrease");
+    expect(filter).toContain("pad=1080:1920:(ow-iw)/2:(oh-ih)/2");
+  });
+
+  it("stretch açıkça istenirse eski davranışı korur", () => {
+    expect(sized({ fit: "stretch" })).toContain("scale=1080:1920");
+  });
+
+  it("tek boyutta oranı koruyan -2 kullanmayı sürdürür", () => {
+    const only = vf(buildFfmpegArgs({ ...base, videoHints: { width: 640 } })) ?? "";
+    expect(only).toContain("scale=640:-2");
+    expect(only).not.toContain("crop=");
+  });
+});
+
+// ── D-13 ────────────────────────────────────────────────────────────────────
+// `if (width ?? height)`: sıfır nullish değil ama falsy. Kullanıcı 360p ister,
+// orijinal çözünürlükte çıktı alırdı.
+describe("D-13: sıfır ve geçersiz ölçüler", () => {
+  it("width 0 verildiğinde geçerli height'ı yok saymaz", () => {
+    const filter = vf(buildFfmpegArgs({ ...base, videoHints: { width: 0, height: 360 } })) ?? "";
+    expect(filter).toContain("scale=-2:360");
+  });
+
+  it.each([0, -1, NaN, Infinity])("geçersiz ölçüyü (%p) yok sayar", (bad) => {
+    const args = buildFfmpegArgs({ ...base, videoHints: { width: bad, height: bad } });
+    expect(vf(args)).toBeUndefined();
+  });
+
+  it("fps 0 filtre eklemez", () => {
+    expect(vf(buildFfmpegArgs({ ...base, videoHints: { fps: 0 } }))).toBeUndefined();
+  });
+});
+
+// ── D-14 / D-15 ─────────────────────────────────────────────────────────────
+// PNG ve JPEG hedefleri ilk kareyi yazıp ikinci karede exit 234 ile düşüyor ama
+// diskte geçerli görünen kısmi dosya bırakıyordu; libwebp aynı girdiyle
+// animasyon üretiyordu. AVIF ise libsvtav1 kullandığı için video dalına düşüp
+// `-c:a aac` alıyor, `-an` almıyordu.
+describe("D-14/D-15: tek kare görüntü çıktısı", () => {
+  const still = (outputPath: string, videoEncoder?: ConvertJobSpec["videoEncoder"]) =>
+    buildFfmpegArgs({ ...base, outputPath, ...(videoEncoder ? { videoEncoder } : {}) });
+
+  it.each([
+    ["/tmp/o.png", "png"],
+    ["/tmp/o.jpg", "mjpeg"],
+    ["/tmp/o.webp", "libwebp"]
+  ] as const)("%s tek kareye sınırlanır", (out, enc) => {
+    const args = still(out, enc);
+    expect(args).toContain("-frames:v");
+    expect(args[args.indexOf("-frames:v") + 1]).toBe("1");
+    expect(args).toContain("-an");
+  });
+
+  it("AVIF görüntü dalına düşer — encoder libsvtav1 olsa bile", () => {
+    const args = still("/tmp/o.avif", "libsvtav1");
+    expect(args).toContain("-frames:v");
+    expect(args).toContain("-an");
+    expect(args).not.toContain("-c:a");
+  });
+
+  it.each(["/tmp/o.bmp", "/tmp/o.tiff", "/tmp/o.jpeg"])("%s da görüntü sayılır", (out) => {
+    expect(still(out)).toContain("-frames:v");
+  });
+
+  it("video çıktısında kare sınırı koymaz", () => {
+    const args = buildFfmpegArgs({ ...base, outputPath: "/tmp/o.mp4" });
+    expect(args).not.toContain("-frames:v");
+    expect(args).toContain("-c:a");
+  });
+});
+
+// ── D-16 ────────────────────────────────────────────────────────────────────
+// İkisi de sözleşmede tanımlı ama hiçbir yerde okunmuyordu.
+describe("D-16: copyAllStreams ve container", () => {
+  it("copyAllStreams remux'ta tüm akışları eşler", () => {
+    const args = buildFfmpegArgs({ ...base, mode: "copy", copyAllStreams: true });
+    expect(args).toContain("-map");
+    expect(args[args.indexOf("-map") + 1]).toBe("0");
+  });
+
+  it("copyAllStreams verilmezse eski davranış korunur", () => {
+    expect(buildFfmpegArgs({ ...base, mode: "copy" })).not.toContain("-map");
+  });
+
+  it.each(["copy", "transcode"] as const)("%s modunda container'ı -f olarak geçirir", (mode) => {
+    const args = buildFfmpegArgs({ ...base, mode, container: "matroska" });
+    expect(args).toContain("-f");
+    expect(args[args.indexOf("-f") + 1]).toBe("matroska");
+    expect(args.at(-1)).toBe(base.outputPath);
+  });
+
+  it("yalnız-ses çıktıda da container'a saygı duyar", () => {
+    const args = buildFfmpegArgs({ ...base, audioOnlyOutput: true, container: "ipod" });
+    expect(args).toContain("-f");
+  });
+});
+
+// ── D-17 ────────────────────────────────────────────────────────────────────
+// capabilities.ts VideoToolbox'ı doğru tespit ediyordu ama `-hwaccel`
+// argümanlara hiç yansımıyordu; bitrate de çözünürlükten bağımsız sabitti.
+describe("D-17: donanım hızlandırma", () => {
+  it.each([
+    ["h264_videotoolbox", "videotoolbox"],
+    ["hevc_nvenc", "cuda"],
+    ["h264_qsv", "qsv"],
+    ["hevc_vaapi", "vaapi"]
+  ] as const)("%s seçilince çözme tarafını da hızlandırır", (encoder, accel) => {
+    const args = buildFfmpegArgs({ ...base, videoEncoder: encoder });
+    expect(args).toContain("-hwaccel");
+    expect(args[args.indexOf("-hwaccel") + 1]).toBe(accel);
+    // `-hwaccel` girdiden önce gelmek zorunda.
+    expect(args.indexOf("-hwaccel")).toBeLessThan(args.indexOf("-i"));
+  });
+
+  it("yazılım kodlayıcıda hwaccel eklemez", () => {
+    expect(buildFfmpegArgs({ ...base, videoEncoder: "libx264" })).not.toContain("-hwaccel");
+  });
+
+  it("copy modunda hwaccel eklemez — çözme zaten yok", () => {
+    expect(buildFfmpegArgs({ ...base, mode: "copy", videoEncoder: "h264_videotoolbox" })).not.toContain("-hwaccel");
+  });
+
+  it("VideoToolbox bitrate'i kare alanına göre ölçeklenir", () => {
+    const small = flag(
+      buildFfmpegArgs({ ...base, videoEncoder: "h264_videotoolbox", videoHints: { width: 320, height: 240 } }),
+      "-b:v"
+    );
+    const large = flag(
+      buildFfmpegArgs({ ...base, videoEncoder: "h264_videotoolbox", videoHints: { width: 3840, height: 2160 } }),
+      "-b:v"
+    );
+    expect(Number(small)).toBeLessThan(Number(large));
+    // 320×240 için sabit 5M savurgandı.
+    expect(Number(small)).toBeLessThan(5_000_000);
+  });
+
+  it("hedef ölçü yoksa kaynak ölçüsünü kullanır", () => {
+    const bps = flag(
+      buildFfmpegArgs({
+        ...base,
+        videoEncoder: "h264_videotoolbox",
+        videoHints: { sourceWidth: 3840, sourceHeight: 2160 }
+      }),
+      "-b:v"
+    );
+    expect(Number(bps)).toBeGreaterThan(5_000_000);
+  });
+
+  it("hiçbir ölçü bilinmiyorsa katman varsayılanına düşer", () => {
+    expect(
+      flag(buildFfmpegArgs({ ...base, videoEncoder: "h264_videotoolbox" }), "-b:v")
+    ).toBe("5M");
+  });
+
+  it("makul sınırların dışına çıkmaz", () => {
+    const tiny = Number(
+      flag(buildFfmpegArgs({ ...base, videoEncoder: "h264_videotoolbox", videoHints: { width: 16, height: 16, qualityPreset: "very_small" } }), "-b:v")
+    );
+    expect(tiny).toBe(300_000);
   });
 });

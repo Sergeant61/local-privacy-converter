@@ -103,15 +103,25 @@ const videoEncoderChoiceSchema = z.enum([
 
 const audioEncoderChoiceSchema = z.enum(["aac", "libmp3lame", "libopus", "pcm_s16le", "flac", "copy"]);
 
+/**
+ * Ölçü alanları pozitif ve sınırlı olmak zorunda (DENETIM.md D-13).
+ * Önceden yalnızca `z.number()` vardı: `width: 0` şemadan geçiyor, sonra
+ * `if (width ?? height)` içinde falsy olduğu için scale filtresi hiç
+ * eklenmiyordu — kullanıcı 360p isteyip orijinal çözünürlükte çıktı alıyordu.
+ * `fps: 1000` de geçerli sayılıyordu.
+ */
 const videoTranscodeHintsSchema = z.object({
-  width: z.number().optional(),
-  height: z.number().optional(),
-  fps: z.number().optional(),
+  width: z.number().int().positive().max(16384).optional(),
+  height: z.number().int().positive().max(16384).optional(),
+  fps: z.number().positive().max(480).optional(),
   stripVideo: z.boolean().optional(),
   qualityPreset: z.enum(["high", "compatible", "balanced", "small", "very_small"]).optional(),
-  targetSizeMb: z.number().positive().optional(),
+  targetSizeMb: z.number().positive().max(1_000_000).optional(),
   sourceDurationSec: z.number().positive().finite().optional(),
-  aspectRatio: z.string().optional()
+  aspectRatio: z.string().max(32).optional(),
+  fit: z.enum(["cover", "contain", "stretch"]).optional(),
+  sourceWidth: z.number().int().positive().max(16384).optional(),
+  sourceHeight: z.number().int().positive().max(16384).optional()
 });
 
 /** IPC / depolama kökenli `null` veya string sayıları tolere eder. */

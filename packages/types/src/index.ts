@@ -65,6 +65,24 @@ export interface VideoTranscodeHints {
   sourceDurationSec?: number;
   /** Hedef en-boy oranı "W:H" formatında (ör. "16:9"). Crop filter ile uygulanır. */
   aspectRatio?: string;
+  /**
+   * Hem `width` hem `height` verildiğinde kareye nasıl oturulacağı.
+   *
+   * - `cover` (varsayılan): kareyi doldur, taşan kenarları ortadan kırp. Sosyal
+   *   medya presetlerinin beklediği davranış.
+   * - `contain`: tamamını sığdır, kalan alanı siyahla doldur.
+   * - `stretch`: eski davranış — oranı bozarak esnet. Yalnızca açıkça istenirse.
+   *
+   * Öncesinde koşulsuz `stretch` uygulanıyordu: 1080×1920 dikey presetler piksel
+   * ölçüsünü tutturuyor ama görüntüyü eziyordu (DENETIM.md D-08).
+   */
+  fit?: "cover" | "contain" | "stretch";
+  /**
+   * Kaynak karesinin piksel ölçüsü (ffprobe'dan). Hedef çözünürlük verilmediğinde
+   * bitrate hesabı buna dayanır; main process doldurur.
+   */
+  sourceWidth?: number;
+  sourceHeight?: number;
 }
 
 export interface ConvertJobSpec extends PathsInput {
