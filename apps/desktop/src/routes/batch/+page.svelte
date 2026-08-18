@@ -276,7 +276,6 @@
   <section class="card">
     <h2 class="card-title">Dosyalar ({files.length} dosya{files.length !== 1 ? "" : ""})</h2>
 
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="drop-zone"
       class:drag={isDragging}
@@ -301,7 +300,6 @@
     {#if files.length > 0}
       <ul class="file-list">
         {#each files as f (f.id)}
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <li
             class="file-item"
             class:drag-over={dragOverId === f.id && dragFromId !== f.id}

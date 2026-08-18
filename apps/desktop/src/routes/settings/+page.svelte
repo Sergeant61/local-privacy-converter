@@ -195,6 +195,8 @@
             {#if updateResult.hasUpdate}
               <div class="update-available">
                 <span>🎉 {$_("settings.updateAvailable", { values: { latest: `v${updateResult.latestVersion}`, current: `v${updateResult.currentVersion}` } })}</span>
+                <!-- Harici GitHub surum adresi; uygulama ici yonlendirme degil, resolve() gecerli degil. -->
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
                 <a href={updateResult.releaseUrl} target="_blank" rel="noopener" class="release-link">{$_("settings.download")}</a>
               </div>
             {:else}

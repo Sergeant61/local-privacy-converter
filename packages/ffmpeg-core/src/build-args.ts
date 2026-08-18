@@ -1,10 +1,6 @@
 import type { ConvertJobSpec, VideoTranscodeHints } from "@lfc/types";
 
-import {
-  balancedAacAudio,
-  copyStreams,
-  fastNvencCompatibleH264
-} from "@lfc/ffmpeg-presets";
+import { copyStreams } from "@lfc/ffmpeg-presets";
 
 function aspectRatioCropFilter(ratio: string): string | null {
   const parts = ratio.split(":");
