@@ -8,7 +8,7 @@ Bulgu ID'leri (`K-01` … `K-06`) sabittir, yeniden numaralandırılmaz. Bir iş
 bitince `- [ ]` → `- [x]` yapılır ve altına ne yapıldığı + **nasıl ölçüldüğü**
 yazılır — DENETIM.md'deki alışkanlık burada da sürsün.
 
-Durum: **4 açık (biri kısmen) / 2 kapalı** · Son güncelleme: 19 Ağustos 2026 · Sürüm: v1.3.0
+Durum: **4 açık (biri kısmen) / 2 kapalı** · Son güncelleme: 19 Ağustos 2026 · Sürüm: v1.4.0
 
 ---
 
