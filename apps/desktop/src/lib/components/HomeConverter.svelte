@@ -13,6 +13,8 @@
     getSimpleFieldsForProfile,
     getTargetsForSource,
     getTargetById,
+    gpuEncoderForProfile,
+    GPU_ENCODERS,
     isKnownInputExtension,
     normalizeExtension,
     buildProfileJobSpec,
@@ -160,11 +162,6 @@
     { value: "custom",   label: "Özel…" },
   ];
 
-  // GPU encoder öncelik sırası — ilk bulunan kullanılır
-  const GPU_ENCODER_PRIORITY: VideoEncoderChoice[] = [
-    "h264_videotoolbox", "h264_nvenc", "h264_qsv", "h264_amf", "h264_vaapi"
-  ];
-
   const fileAccept = buildHtmlFileAccept();
   const hasLfc = browser && typeof window !== "undefined" && "lfc" in window && window.lfc;
 
@@ -196,14 +193,32 @@
     return { general, platforms };
   });
 
-  function autoSelectGpuEncoder(): void {
-    const profile = getTargetById(targetProfileId);
-    if (!profile?.hasVideoOut || probeSummary?.inferredKind === "image-only") {
-      return;
-    }
-    const best = GPU_ENCODER_PRIORITY.find((enc) => encoderSet.has(enc));
-    if (best) overrideVideoEncoder = best;
+  /**
+   * Bu hedef için kullanılabilir donanım kodlayıcısı; yoksa boş (profil varsayılanı).
+   * Kodek ailesi eşlemesi `@lfc/media-formats` içinde ve orada sınanıyor
+   * (ISTEMCI-TEST-RAPORU.md H-01).
+   */
+  function gpuEncoderFor(profileId: TargetProfileId): VideoEncoderChoice | "" {
+    const profile = getTargetById(profileId);
+    if (!profile?.hasVideoOut || probeSummary?.inferredKind === "image-only") return "";
+    return gpuEncoderForProfile(profileId, encoderSet);
   }
+
+  /**
+   * Hedef format değiştiğinde donanım kodlayıcısı YENİDEN seçilir. Önceden yalnızca
+   * dosya yüklenirken bir kez seçiliyordu; format sonradan değiştirilince eski
+   * seçim yerinde kalıp yeni hedefin kodeğini eziyordu.
+   *
+   * Kullanıcı listeden elle bir kodlayıcı seçtiyse (boş = "profil varsayılanı"
+   * dâhil) karışılmıyor; yeni bir dosya seçilince otomatik kipe dönülüyor.
+   */
+  let encoderPickedByUser = $state(false);
+
+  $effect(() => {
+    const id = targetProfileId;
+    if (encoderPickedByUser) return;
+    overrideVideoEncoder = gpuEncoderFor(id);
+  });
 
   onMount(() => {
     const openHandler = () => { void onNativePick(); };
@@ -223,7 +238,8 @@
           hwaccels = c.value.hwaccels;
         }
         capsLoading = false;
-        if (probeSummary) autoSelectGpuEncoder();
+        // Kodlayıcı seçimini `$effect` üstleniyor: `encoderSet` değiştiği için
+        // yetenekler geldiğinde kendiliğinden yeniden çalışıyor.
       });
     } else {
       capsLoading = false;
@@ -268,8 +284,9 @@
     if (firstOk) {
       targetProfileId = firstOk.profile.id;
     }
+    // Yeni dosya → otomatik kodlayıcı seçimine dön.
+    encoderPickedByUser = false;
     overrideVideoEncoder = "";
-    autoSelectGpuEncoder();
     if (kind === "image-only") {
       const prev = await window.lfc.readFilePreview(path);
       if (prev.ok) {
@@ -959,7 +976,7 @@
         {#if advancedFields.includes("override_video_encoder") && selectedRow?.profile.hasVideoOut}
           <label class="field" title="Hangi encoder kullanılacağını seçin. GPU encoder'lar çok daha hızlıdır ancak bazı sistemlerde bulunmayabilir.">
             <span>Video encoder</span>
-            <select bind:value={overrideVideoEncoder}>
+            <select bind:value={overrideVideoEncoder} onchange={() => (encoderPickedByUser = true)}>
               <option value="">Varsayılan (profil)</option>
               {#each Object.entries(ENCODER_LABELS) as [enc, label] (enc)}
                 {#if encoderSet.has(enc)}
@@ -967,7 +984,7 @@
                 {/if}
               {/each}
             </select>
-            {#if overrideVideoEncoder && GPU_ENCODER_PRIORITY.includes(overrideVideoEncoder as VideoEncoderChoice)}
+            {#if overrideVideoEncoder && GPU_ENCODERS.has(overrideVideoEncoder)}
               <p class="field-hint gpu-hint">GPU encoder etkin — donanım hızlandırma kullanılıyor.</p>
             {/if}
           </label>

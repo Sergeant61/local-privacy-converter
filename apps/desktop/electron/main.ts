@@ -120,6 +120,7 @@ function isTrustedOrigin(rawUrl: string, devUrl: string): boolean {
 
 async function createWindow(): Promise<void> {
   const devUrl = process.env.VITE_DEV_SERVER_URL?.trim() ?? "";
+  const isMac = process.platform === "darwin";
 
   const window = new BrowserWindow({
     width: 980,
@@ -128,6 +129,23 @@ async function createWindow(): Promise<void> {
     minHeight: 600,
     title: "Local Privacy Converter",
     show: false,
+    // ── macOS'ta yerel pencere kabuğu ──────────────────────────────────────
+    //
+    // `hiddenInset` başlık çubuğunu kaldırıp trafik ışıklarını içeriğin üstüne
+    // bindiriyor; kenar çubuğu pencerenin tepesine kadar uzanıyor (Finder,
+    // Mail, Sistem Ayarları'nın kullandığı düzen).
+    //
+    // `vibrancy` (saydam kenar çubuğu) denendi ama AÇILMADI: çalışması için
+    // pencerenin opak olmaması gerekiyor (`backgroundColor: "#00000000"`) ve
+    // gövdenin de saydam boyanması gerekiyor. Bu üçlü, fare girdisinin
+    // pencereye nasıl ulaştığını değiştirdiği için elle sınanmadan açılmamalı.
+    // Görsel bir incelik; tıklanabilirlik ise şart.
+    ...(isMac
+      ? {
+          titleBarStyle: "hiddenInset" as const,
+          trafficLightPosition: { x: 14, y: 18 }
+        }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

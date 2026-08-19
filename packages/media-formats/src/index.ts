@@ -1,6 +1,7 @@
 export * from "./conversion-matrix";
 export * from "./extra-args";
 export * from "./file-accept";
+export * from "./gpu-encoders";
 export * from "./input-profile";
 export * from "./job-hints";
 export * from "./job-spec";

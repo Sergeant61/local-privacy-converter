@@ -21,9 +21,8 @@
     "soon": "Yakında",
     "openMenu": "Menüyü aç",
     "closeMenu": "Menüyü kapat",
-    "expandMenu": "Menüyü genişlet",
-    "collapseMenu": "Menüyü daralt",
-    "appMenu": "Uygulama menüsü"
+    "appMenu": "Uygulama menüsü",
+    "version": "Sürüm {version}"
   },
   "history": {
     "empty": "Henüz dönüşüm yok.",
@@ -33,7 +32,17 @@
     "exportJson": "JSON olarak dışa aktar",
     "exportCsv": "CSV olarak dışa aktar",
     "delete": "Sil",
-    "clear": "Geçmişi temizle"
+    "clear": "Geçmişi temizle",
+    "title": "Dönüşüm geçmişi",
+    "subtitle": "Son 50 işlem yalnızca bu cihazda saklanır; hiçbir yere gönderilmez.",
+    "emptyHint": "Bir dönüşüm tamamlandığında burada listelenir.",
+    "count": "{count} kayıt",
+    "colInput": "Kaynak",
+    "colOutput": "Çıktı",
+    "colTarget": "Hedef",
+    "colStatus": "Durum",
+    "colDate": "Tarih",
+    "colActions": "İşlem"
   },
   "common": {
     "loading": "Yükleniyor…",
@@ -56,7 +65,9 @@
     "openFile": "Dosya Aç",
     "selectFile": "Dosya seçin veya buraya sürükleyin",
     "processing": "İşleniyor…",
-    "showInFolder": "Klasörde göster"
+    "showInFolder": "Klasörde göster",
+    "themeLight": "Açık tema",
+    "themeDark": "Karanlık tema"
   },
   "settings": {
     "title": "Ayarlar",

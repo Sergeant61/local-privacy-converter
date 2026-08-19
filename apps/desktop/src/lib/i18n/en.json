@@ -21,9 +21,8 @@
     "soon": "Soon",
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
-    "expandMenu": "Expand menu",
-    "collapseMenu": "Collapse menu",
-    "appMenu": "Application menu"
+    "appMenu": "Application menu",
+    "version": "Version {version}"
   },
   "history": {
     "empty": "No conversions yet.",
@@ -33,7 +32,17 @@
     "exportJson": "Export as JSON",
     "exportCsv": "Export as CSV",
     "delete": "Delete",
-    "clear": "Clear history"
+    "clear": "Clear history",
+    "title": "Conversion history",
+    "subtitle": "The last 50 jobs are kept on this device only; nothing is sent anywhere.",
+    "emptyHint": "Completed conversions are listed here.",
+    "count": "{count} records",
+    "colInput": "Source",
+    "colOutput": "Output",
+    "colTarget": "Target",
+    "colStatus": "Status",
+    "colDate": "Date",
+    "colActions": "Action"
   },
   "common": {
     "loading": "Loading…",
@@ -56,7 +65,9 @@
     "openFile": "Open File",
     "selectFile": "Select a file or drag it here",
     "processing": "Processing…",
-    "showInFolder": "Show in folder"
+    "showInFolder": "Show in folder",
+    "themeLight": "Light theme",
+    "themeDark": "Dark theme"
   },
   "settings": {
     "title": "Settings",

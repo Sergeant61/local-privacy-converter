@@ -1,42 +1,84 @@
-/* Local Privacy Converter — tasarım tokenları */
+/* Local Privacy Converter — tasarım tokenları
+ *
+ * Hedef: masaüstü uygulaması gibi görünmek, gömülü bir web sayfası gibi değil.
+ * Somut kararlar:
+ *   • Vurgu rengi TEK renk (gradyan değil). `--accent-start` ve `--accent-end`
+ *     aynı değeri tutuyor, böylece bileşenlerdeki 49 `linear-gradient` tek tek
+ *     düzenlenmeden düz renge dönüşüyor.
+ *   • Yarıçaplar macOS denetim ölçüleri: kart 10px, düğme 6px (önceden 16/12 —
+ *     web kartı hissi veren ölçüler).
+ *   • Gölge neredeyse yok; derinlik kenarlıkla veriliyor.
+ *   • İmleç `default`: macOS uygulamalarında düğme üstünde el imleci çıkmaz.
+ */
 :root {
-  --bg: #0b1220;
-  --text: #eef2ff;
-  --muted: rgba(238, 242, 255, 0.72);
-  --border: rgba(255, 255, 255, 0.08);
-  --surface: rgba(255, 255, 255, 0.02);
-  --surface-hover: rgba(255, 255, 255, 0.06);
-  --surface-elevated: rgba(255, 255, 255, 0.06);
-  --accent-start: #38bdf8;
-  --accent-end: #6366f1;
-  --accent-text: #071018;
-  --danger: #f87171;
-  --success: #34d399;
-  --radius-card: 16px;
-  --radius-button: 12px;
+  --bg: #1e1e1e;
+  --bg-sidebar: #262626;
+  --text: #f2f2f7;
+  --muted: rgba(242, 242, 247, 0.55);
+  --border: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --surface-elevated: rgba(255, 255, 255, 0.07);
+  /* macOS sistem mavisi (dark). Gradyan uçları eşit → düz renk. */
+  --accent: #0a84ff;
+  --accent-start: #0a84ff;
+  --accent-end: #0a84ff;
+  --accent-hover: #3395ff;
+  --accent-text: #ffffff;
+  --selection-idle: rgba(255, 255, 255, 0.1);
+  --danger: #ff453a;
+  --success: #32d74b;
+  --radius-card: 10px;
+  --radius-button: 6px;
   --radius-pill: 999px;
-  --shadow-card: 0 10px 40px rgba(0, 0, 0, 0.45), inset 0 1px rgba(255, 255, 255, 0.05);
-  --sidebar-expanded: 260px;
-  --sidebar-collapsed: 72px;
-  --backdrop: rgba(7, 16, 24, 0.55);
+  --shadow-card: 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+  --sidebar-expanded: 240px;
+  --backdrop: rgba(0, 0, 0, 0.4);
+  /* Trafik ışıklarının altında kalan güvenli alan (yalnızca macOS'ta > 0). */
+  --titlebar-height: 0px;
+
+  accent-color: var(--accent);
+  color-scheme: dark;
 }
 
 /* Açık tema */
 :root.light {
-  --bg: #f0f4f8;
-  --text: #0f172a;
-  --muted: rgba(15, 23, 42, 0.55);
-  --border: rgba(15, 23, 42, 0.12);
-  --surface: rgba(255, 255, 255, 0.75);
-  --surface-hover: rgba(255, 255, 255, 0.95);
-  --surface-elevated: rgba(255, 255, 255, 0.9);
-  --accent-start: #0ea5e9;
-  --accent-end: #4f46e5;
+  --bg: #f5f5f7;
+  --bg-sidebar: #ebebeb;
+  --text: #1d1d1f;
+  --muted: rgba(29, 29, 31, 0.55);
+  --border: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.18);
+  --surface: rgba(255, 255, 255, 0.7);
+  --surface-hover: rgba(0, 0, 0, 0.05);
+  --surface-elevated: #ffffff;
+  --accent: #007aff;
+  --accent-start: #007aff;
+  --accent-end: #007aff;
+  --accent-hover: #0a84ff;
   --accent-text: #ffffff;
-  --danger: #dc2626;
-  --success: #16a34a;
-  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.1), inset 0 1px rgba(255, 255, 255, 0.8);
-  --backdrop: rgba(15, 23, 42, 0.35);
+  --selection-idle: rgba(0, 0, 0, 0.08);
+  --danger: #ff3b30;
+  --success: #28cd41;
+  --shadow-card: 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --backdrop: rgba(0, 0, 0, 0.25);
+
+  color-scheme: light;
+}
+
+/* macOS'ta başlık çubuğu gizli: trafik ışıkları içeriğin üstüne biniyor. */
+:root[data-platform="mac"] {
+  --titlebar-height: 30px;
+}
+
+/* Pencere arka plandayken macOS tüm vurguları griye çeker — aynısını yapıyoruz. */
+:root.window-inactive {
+  --accent: var(--selection-idle);
+  --accent-start: var(--selection-idle);
+  --accent-end: var(--selection-idle);
+  --accent-hover: var(--selection-idle);
+  --accent-text: var(--text);
 }
 
 *,
@@ -53,28 +95,106 @@ body {
 body {
   margin: 0;
   font-family:
-    "Inter",
-    system-ui,
     -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "Segoe UI Variable Text",
     "Segoe UI",
-    Roboto,
+    system-ui,
     sans-serif;
-  background: var(--bg);
+  /* Sistem yazı tipiyle gelen yerel metrik: macOS'ta SF'in optik boyutu. */
+  font-size: 13px;
+  line-height: 1.45;
   color: var(--text);
-  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background: var(--bg);
 }
 
 #svelte {
   min-height: 100%;
 }
 
+/* Uygulama kabuğu metni seçilmez — masaüstü uygulaması davranışı. Gerçekten
+ * kopyalanabilir olması gereken yerler (girdi alanları, loglar) geri açılıyor. */
+body {
+  user-select: none;
+  cursor: default;
+}
+
+input,
+textarea,
+pre,
+code,
+[contenteditable="true"],
+.selectable {
+  user-select: text;
+}
+
+input,
+textarea {
+  cursor: text;
+}
+
+/* macOS'ta düğme üzerinde el imleci çıkmaz. */
+button,
+a,
+summary,
+label,
+select {
+  cursor: default;
+}
+
+/* macOS odak halkası: ince, vurgu renginin yumuşatılmışı. */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible,
+textarea:focus-visible,
 summary:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-start);
+  box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* İnce, üstte yüzen kaydırma çubuğu — macOS varsayılanına yakın. */
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text) 38%, transparent);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Hareketi azalt tercihi: masaüstünde sıkça açık olur. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .sr-only {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Sidebar from "./Sidebar.svelte";
+  import Topbar from "./Topbar.svelte";
 
   const { children } = $props<{ children: () => unknown }>();
 
@@ -23,12 +24,34 @@
   }
 
   onMount(() => {
+    const root = document.documentElement;
+
+    // macOS'ta pencere kabuğu farklı: başlık çubuğu gizli, trafik ışıkları
+    // içeriğin üstünde ve arka plan vibrancy ile saydam. Bu üçü yalnızca
+    // orada geçerli, o yüzden platform CSS'e bir kez bayrak olarak veriliyor.
+    if (/Mac/i.test(navigator.userAgent)) {
+      root.dataset.platform = "mac";
+    }
+
+    // Pencere arkaya düştüğünde macOS tüm vurgu renklerini griye çeker.
+    const syncWindowActive = () => root.classList.toggle("window-inactive", !document.hasFocus());
+    syncWindowActive();
+    window.addEventListener("focus", syncWindowActive);
+    window.addEventListener("blur", syncWindowActive);
+
     const stored = localStorage.getItem("lpc-theme");
+    const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
     if (stored) {
       applyTheme(stored === "dark");
     } else {
-      applyTheme(!window.matchMedia("(prefers-color-scheme: light)").matches);
+      applyTheme(systemDark.matches);
     }
+    // Kullanıcı elle seçim yapmadıysa sistem temasını izle.
+    const syncSystemTheme = (e: MediaQueryListEvent) => {
+      if (!localStorage.getItem("lpc-theme")) applyTheme(e.matches);
+    };
+    systemDark.addEventListener("change", syncSystemTheme);
+
     const mq = window.matchMedia("(max-width: 720px)");
     const sync = () => {
       const matches = mq.matches;
@@ -59,6 +82,9 @@
     return () => {
       mq.removeEventListener("change", sync);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("focus", syncWindowActive);
+      window.removeEventListener("blur", syncWindowActive);
+      systemDark.removeEventListener("change", syncSystemTheme);
     };
   });
 
@@ -82,32 +108,13 @@
 
   <Sidebar bind:drawerOpen {mobile} />
 
-  {#if mobile && !drawerOpen}
-    <button
-      type="button"
-      class="fab-menu"
-      onclick={openDrawer}
-      aria-controls="app-sidebar"
-      aria-expanded="false"
-    >
-      <span class="fab-icon" aria-hidden="true">☰</span>
-      <span class="sr-only">Menüyü aç</span>
-    </button>
-  {/if}
-
-  <div class="main-surface" class:pad-mobile={mobile}>
-    {@render children()}
+  <div class="main-surface">
+    <Topbar {mobile} {isDark} onToggleTheme={toggleTheme} onOpenDrawer={openDrawer} />
+    <div class="content">
+      {@render children()}
+    </div>
   </div>
 
-  <button
-    type="button"
-    class="theme-toggle"
-    aria-label={isDark ? "Açık temaya geç" : "Karanlık temaya geç"}
-    title={isDark ? "Açık tema" : "Karanlık tema"}
-    onclick={toggleTheme}
-  >
-    {isDark ? "☀️" : "🌙"}
-  </button>
 </div>
 
 <style>
@@ -121,15 +128,23 @@
     background: var(--bg);
   }
 
+  /* Üst çubuk sabit, içerik onun altında kayıyor: sürükleme şeridi ve gezinme
+     her zaman görünür kalmalı. Bu yüzden yüzey dikey bir kolon. */
   .main-surface {
     flex: 1;
     min-width: 0;
-    overflow: auto;
-    padding: 1.5rem 2rem 2.5rem;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+    position: relative;
   }
 
-  .main-surface.pad-mobile {
-    padding-top: 4.25rem;
+  .content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 1.5rem 2rem 2.5rem;
   }
 
   .backdrop {
@@ -150,55 +165,4 @@
     pointer-events: auto;
   }
 
-  .fab-menu {
-    position: fixed;
-    top: 12px;
-    left: 12px;
-    z-index: 68;
-    width: 2.85rem;
-    height: 2.85rem;
-    border-radius: var(--radius-button);
-    border: 1px solid var(--border);
-    background: var(--surface-elevated);
-    color: var(--text);
-    cursor: pointer;
-    box-shadow: var(--shadow-card);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .fab-menu:hover {
-    background: var(--surface-hover);
-  }
-
-  .fab-icon {
-    font-size: 1.1rem;
-    line-height: 1;
-  }
-
-  .theme-toggle {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
-    z-index: 70;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 50%;
-    border: 1px solid var(--border);
-    background: var(--surface-elevated);
-    cursor: pointer;
-    box-shadow: var(--shadow-card);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.1rem;
-    line-height: 1;
-    transition: background 0.15s, transform 0.1s;
-  }
-
-  .theme-toggle:hover {
-    background: var(--surface-hover);
-    transform: scale(1.08);
-  }
 </style>

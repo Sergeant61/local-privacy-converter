@@ -927,6 +927,49 @@ describe(WATERMARK_CHANNEL, () => {
     expect(joined).toContain("overlay=10:10");
   });
 
+  /**
+   * ISTEMCI-TEST-RAPORU.md H-02 — konum ifadeleri her iki filtre için de
+   * `overlay` sözdizimiyle yazılmıştı. `drawtext`'te `w`/`h` ANA VİDEO ölçüleri
+   * olduğu için `(W-w)/2` → 0 ve `W-w-10` → −10 hesaplanıyordu: beş konumdan
+   * dördü metni sol üst köşeye, bir kısmını da kadraj dışına basıyordu.
+   */
+  const TEXT_POSITIONS = [
+    ["topleft", "x=10", "y=10"],
+    ["topright", "x=w-text_w-10", "y=10"],
+    ["bottomleft", "x=10", "y=h-text_h-10"],
+    ["bottomright", "x=w-text_w-10", "y=h-text_h-10"],
+    ["center", "x=(w-text_w)/2", "y=(h-text_h)/2"]
+  ] as const;
+
+  it.each(TEXT_POSITIONS)(
+    "metin modunda %s konumu metin kutusu ölçüleriyle hesaplanıyor (H-02)",
+    async (position, expectedX, expectedY) => {
+      await invoke(WATERMARK_CHANNEL, {
+        inputPath: "/a/1.mp4",
+        outputPath: tmpPath("wm.mp4"),
+        mode: "text",
+        text: "LPC",
+        position
+      });
+      const joined = lastFfmpegArgs().join(" ");
+      expect(joined).toContain(expectedX);
+      expect(joined).toContain(expectedY);
+      // `W`/`H` drawtext'te ana videoyu gösterir; metin kutusu için kullanılamaz.
+      expect(joined).not.toMatch(/[xy]=[^:]*[WH]/);
+    }
+  );
+
+  it("görsel modda overlay değişkenleri korunuyor — orada W/H doğru (H-02)", async () => {
+    await invoke(WATERMARK_CHANNEL, {
+      inputPath: "/a/1.mp4",
+      outputPath: tmpPath("wm.mp4"),
+      mode: "image",
+      imagePath: "/a/logo.png",
+      position: "center"
+    });
+    expect(lastFfmpegArgs().join(" ")).toContain("overlay=(W-w)/2:(H-h)/2");
+  });
+
   it("görsel modda imagePath yoksa reddediyor", async () => {
     const res = await invoke(WATERMARK_CHANNEL, {
       inputPath: "/a/1.mp4",

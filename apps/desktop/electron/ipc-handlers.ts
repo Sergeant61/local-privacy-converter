@@ -1400,14 +1400,32 @@ export function wireIpcHandlers(host: IpcHost): void {
         return { ok: false, message: e instanceof Error ? e.message : String(e) };
       }
 
-      // Position mapping to FFmpeg overlay expressions
-      const posMap: Record<string, string> = {
-        topleft:     "10:10",
-        topright:    "W-w-10:10",
-        bottomleft:  "10:H-h-10",
-        bottomright: "W-w-10:H-h-10",
+      // Konum ifadeleri filtreye göre AYRI yazılmak zorunda: `overlay` ile
+      // `drawtext` aynı harfleri farklı anlamda kullanıyor.
+      //
+      //   overlay : W,H = ana video · w,h = bindirilen görsel
+      //   drawtext: w,h = ANA VİDEO (W,H ile eş anlamlı) · metin kutusu text_w,text_h
+      //
+      // Her ikisi de overlay sözdizimiyle yazıldığı için metin filigranında
+      // `(W-w)/2` = 0 ve `W-w-10` = −10 oluyordu: "Merkez", "Sağ Alt", "Sağ Üst"
+      // ve "Sol Alt" seçenekleri metni sol üst köşeye (bir kısmını da kadrajın
+      // dışına) basıyordu. Yalnızca "Sol Üst" doğru çalışıyordu.
+      const MARGIN = 10;
+      const overlayPosMap: Record<string, string> = {
+        topleft:     `${MARGIN}:${MARGIN}`,
+        topright:    `W-w-${MARGIN}:${MARGIN}`,
+        bottomleft:  `${MARGIN}:H-h-${MARGIN}`,
+        bottomright: `W-w-${MARGIN}:H-h-${MARGIN}`,
         center:      "(W-w)/2:(H-h)/2",
       };
+      const textPosMap: Record<string, string> = {
+        topleft:     `${MARGIN}:${MARGIN}`,
+        topright:    `w-text_w-${MARGIN}:${MARGIN}`,
+        bottomleft:  `${MARGIN}:h-text_h-${MARGIN}`,
+        bottomright: `w-text_w-${MARGIN}:h-text_h-${MARGIN}`,
+        center:      "(w-text_w)/2:(h-text_h)/2",
+      };
+      const posMap = mode === "image" ? overlayPosMap : textPosMap;
       const overlayPos = posMap[position] ?? posMap["bottomright"]!;
 
       let args: string[];

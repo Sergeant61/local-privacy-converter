@@ -97,8 +97,9 @@
 
 <style>
   .nav-feature-icon {
-    width: 1.35rem;
-    height: 1.35rem;
+    width: 15px;
+    height: 15px;
+    opacity: 0.85;
     flex-shrink: 0;
   }
 </style>

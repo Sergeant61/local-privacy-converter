@@ -10,6 +10,9 @@ import type {
 } from "@lfc/validators";
 
 declare global {
+  /** Derleme anında `vite.config.ts` tarafından package.json sürümüyle doldurulur. */
+  const __APP_VERSION__: string;
+
   interface Window {
     lfc: {
       getFfmpegVersion: () => Promise<IpcFfmpegVersionResponse>;
