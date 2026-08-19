@@ -34,7 +34,6 @@
 
   let busy = $state(false);
   let cancelled = $state(false);
-  let currentIndex = $state<number | null>(null);
 
   const OUTPUT_FORMATS: { id: TargetProfileId; label: string; group: string }[] = [
     { id: "mp4-h264-aac",   label: "MP4 (H.264 + AAC)",   group: "Video" },
@@ -182,8 +181,6 @@
     for (let i = 0; i < pendingFiles.length; i++) {
       if (cancelled) break;
       const f = pendingFiles[i]!;
-      currentIndex = files.findIndex((x) => x.id === f.id);
-
       const dot = f.label.lastIndexOf(".");
       const base = dot >= 0 ? f.label.slice(0, dot) : f.label;
       const outPath = `${dirResult.dir}${sep}${base}-donusum.${ext}`;
@@ -239,7 +236,6 @@
     }
 
     busy = false;
-    currentIndex = null;
   }
 
   async function cancelBatch() {

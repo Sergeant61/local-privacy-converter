@@ -11,7 +11,6 @@
   let fileLabel = $state<string | null>(null);
   let isDragging = $state(false);
   let fileError = $state<string | null>(null);
-  let mediaKind = $state<MediaKind>("video");
 
   let availableProfiles = $state<TargetProfile[]>([]);
   let selectedIds = new SvelteSet<string>();
@@ -49,7 +48,6 @@
     const IMAGE_EXTS = new Set(["png","jpg","jpeg","webp","avif","gif","bmp","tiff","tif"]);
     if (AUDIO_EXTS.has(ext)) kind = "audio";
     else if (IMAGE_EXTS.has(ext)) kind = "image-only";
-    mediaKind = kind;
     availableProfiles = getTargetsForKind(kind).filter((pr) => !pr.id.startsWith("social-"));
     filePath = p;
     fileLabel = label;
