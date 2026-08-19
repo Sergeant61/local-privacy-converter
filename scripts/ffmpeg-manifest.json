@@ -1,8 +1,13 @@
 {
-  "$comment": "DENETIM.md D-19. ffmpeg ve ffprobe aynı derlemeden, aynı sürümden gelmeli. Sağlama toplamları depoda sabit: indirilen ikili bunlarla eşleşmezse paketleme durur. Sürüm yükseltirken sha256 değerleri scripts/verify-ffmpeg-manifest.mjs ile yeniden üretilmeli.",
+  "$comment": "DENETIM.md D-19 + KALAN-ISLER.md K-05. ffmpeg ve ffprobe aynı derlemeden, aynı sürümden gelmeli. Sağlama toplamları depoda sabit: indirilen ikili bunlarla eşleşmezse paketleme durur. `sources` sırayla denenir ve HER kaynak aynı sağlama kontrolünden geçer — bir ayna ele geçirilse bile yanlış ikili paketlenemez, yalnızca o kaynak atlanır. Sürüm yükseltirken sha256 değerleri scripts/verify-ffmpeg-manifest.mjs --update ile yeniden üretilmeli.",
   "version": "7.1",
   "releaseTag": "b7.1.0-rc.1",
-  "baseUrl": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b7.1.0-rc.1",
+  "sources": [
+    {
+      "name": "upstream",
+      "baseUrl": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b7.1.0-rc.1"
+    }
+  ],
   "platforms": {
     "darwin-arm64": {
       "ffmpeg": "6d175a4743ca50256e89a8cdd731100f9cee33bd79aeea46894d209410dc6617",

@@ -24,6 +24,15 @@
  * `ffmpeg-manifest.json` içinde sabit, her ikilinin SHA-256'sı depoda duruyor.
  * İndirilen dosya beklenen sağlamayı tutturmazsa paketleme durur. Böylece
  * ffmpeg ve ffprobe aynı derlemeden, aynı sürümden ve doğru mimaride gelir.
+ *
+ * ── Neden birden çok kaynak (KALAN-ISLER.md K-05) ──────────────────────────
+ *
+ * Manifest tek bir URL'e bağlıydı: o release silinir ya da erişilemez olursa
+ * paketleme kırılırdı. Artık `sources` sırayla deneniyor ve **her kaynak aynı
+ * sağlama kontrolünden geçiyor**. Sonuç: bir ayna eklemek güvenlik yüzeyini
+ * genişletmiyor — ele geçirilmiş bir ayna yanlış ikiliyi paketleyemez, yalnızca
+ * o kaynak atlanır ve sıradakine geçilir. Hiçbir kaynak doğru ikiliyi
+ * veremezse paketleme, denenen her kaynağın nedeniyle birlikte durur.
  */
 
 import { createHash } from "crypto";
@@ -46,6 +55,12 @@ const platform = process.env.npm_config_platform || os.platform();
 const arch = process.env.npm_config_arch || os.arch();
 const platformKey = `${platform}-${arch}`;
 const isWin = platform === "win32";
+
+const sources = manifest.sources;
+if (!Array.isArray(sources) || sources.length === 0) {
+  console.error("[prepare-ffmpeg] ffmpeg-manifest.json içinde `sources` tanımlı değil.");
+  process.exit(1);
+}
 
 const expected = manifest.platforms[platformKey];
 if (!expected) {
@@ -86,7 +101,16 @@ async function download(url, destPath) {
   fs.writeFileSync(destPath, buf);
 }
 
-/** Önbellekte doğrulanmış bir kopya varsa onu döndürür, yoksa indirip doğrular. */
+/** Manifest'teki bir kaynak için bu araca ait indirme adresi. */
+function binaryUrl(source, tool, key) {
+  return `${source.baseUrl.replace(/\/+$/, "")}/${tool}-${key}`;
+}
+
+/**
+ * Önbellekte doğrulanmış bir kopya varsa onu döndürür; yoksa kaynakları
+ * sırayla dener. Her kaynak ayrı ayrı doğrulanır: sağlama tutmayan kaynak
+ * atlanır ama sessizce geçilmez, nedeni raporlanır.
+ */
 async function ensureBinary(tool) {
   const cached = path.join(cacheDir, tool);
 
@@ -98,21 +122,47 @@ async function ensureBinary(tool) {
     fs.rmSync(cached);
   }
 
-  const url = `${manifest.baseUrl}/${tool}-${platformKey}`;
-  console.log(`  ⬇ ${tool} ${manifest.version} (${platformKey}) indiriliyor…`);
-  await download(url, cached);
+  const failures = [];
+  for (const source of sources) {
+    const url = binaryUrl(source, tool, platformKey);
+    console.log(`  ⬇ ${tool} ${manifest.version} (${platformKey}) — ${source.name}`);
 
-  const actual = sha256(cached);
-  if (actual !== expected[tool]) {
+    try {
+      await download(url, cached);
+    } catch (err) {
+      // Ulaşılamama bir kullanılabilirlik sorunu: sıradaki kaynağa geçilir.
+      const reason = `${source.name}: ${err.message}`;
+      failures.push(reason);
+      console.warn(`  ⚠ ${tool}: ${reason}`);
+      continue;
+    }
+
+    const actual = sha256(cached);
+    if (actual === expected[tool]) {
+      if (failures.length > 0) {
+        console.warn(`  ↳ ${tool}: ${source.name} kaynağına düşüldü (${failures.length} kaynak atlandı)`);
+      }
+      return cached;
+    }
+
+    // Doğrulama başarısız: dosyayı at, ama diğer kaynakları denemeye devam et.
+    // Ele geçirilmiş bir ayna, sağlam bir kaynağın kullanılmasını engellememeli.
+    //
+    // Uyarı, iş sonradan başka bir kaynaktan başarıyla bitse BİLE basılıyor:
+    // sağlama uyuşmazlığı bir bütünlük sinyalidir, kullanılabilirlik sorunu
+    // değil. Yalnızca "hepsi başarısız" durumunda raporlansaydı, zehirlenmiş
+    // bir ayna upstream çalıştığı sürece sessizce görünmez kalırdı.
     fs.rmSync(cached, { force: true });
-    throw new Error(
-      `${tool} sağlama toplamı tutmadı — paketleme durduruldu.\n` +
-        `  beklenen: ${expected[tool]}\n` +
-        `  gelen   : ${actual}\n` +
-        `  kaynak  : ${url}`
-    );
+    const reason =
+      `${source.name}: sağlama tutmadı (beklenen ${expected[tool]}, gelen ${actual}) — ${url}`;
+    failures.push(reason);
+    console.warn(`  ⚠ ${tool}: SAĞLAMA TUTMADI — ${reason}`);
   }
-  return cached;
+
+  throw new Error(
+    `${tool} hiçbir kaynaktan doğrulanamadı — paketleme durduruldu.\n` +
+      failures.map((f) => `  • ${f}`).join("\n")
+  );
 }
 
 fs.mkdirSync(destDir, { recursive: true });
