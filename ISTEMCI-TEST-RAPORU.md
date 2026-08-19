@@ -436,3 +436,83 @@ türüyor; ekran eklendiğinde başlık kendiliğinden geliyor.
 
 Bu turda da **uygulama çalıştırılmadı**. Arayüz doğrulaması (üst çubuk hizası, geçmiş
 tablosunun dar ekranda karta dönmesi, sürüm satırı) arayüz testi onayı bekliyor.
+
+---
+
+## Ek: arayüz testi — H-01, H-02 ve yeni kabuk (19.08.2026)
+
+Uygulama `pnpm dev` ile çalıştırıldı, ekranlar elle sürüldü, üretilen dosyalar diskte
+`ffprobe`/kare çıkarma ile doğrulandı.
+
+### H-01 — ekranda doğrulandı ✅
+
+| Adım | Ölçülen |
+|---|---|
+| `video-720p-10sn.mp4` açıldı, hedef **MP4 (H.264 + AAC)** | Gelişmiş ayarlar: `h264_videotoolbox`, rozet `libx264: yüklü` |
+| Hedef **MP4 (H.265 / HEVC + AAC)** yapıldı | Kodlayıcı **anında** `hevc_videotoolbox — Apple GPU · çok hızlı (H.265)`, rozet `libx265: yüklü` |
+| Dönüştürüldü → `ffprobe` | `codec_name=hevc` · `codec_tag_string=hev1` · 1280×720 |
+| Hedef **WebM (VP9 + Opus)** yapıldı | Kodlayıcı `Varsayılan (profil)`, donanım hızlandırma satırı kayboldu, rozetler `libvpx-vp9` / `libopus` |
+| Dönüştürüldü → `ffprobe` | `codec_name=vp9` + `codec_name=opus`, 752 KB dosya yazıldı |
+| Yeni dosya seçildi | Hedef ve kodlayıcı H.264 varsayılanına döndü — seçim dosyaya takılı kalmıyor |
+
+Eskiden birincisi sessizce `h264/avc1` veriyordu, ikincisi hiç dosya yazmıyordu.
+
+### H-02 — ekranda doğrulandı ✅
+
+`video-480p-25fps-farkli.mp4` üzerine "© Filigran" metni üç konumda basıldı, her
+çıktının 2. saniyesinden kare çıkarılıp alt alta dizildi:
+
+| Konum | Karede metin nerede |
+|---|---|
+| Merkez | tam ortada ✓ |
+| Sağ Alt | sağ alt köşede, kenardan içeride ✓ |
+| Sol Alt | sol alt köşede ✓ |
+
+Eskiden üçü de sol üst köşedeydi (ikisi kadrajdan taşmış hâlde).
+
+### Yeni kabuk — doğrulananlar
+
+| Konu | Sonuç |
+|---|---|
+| Kenar çubuğunda geçmiş bloğu | Yok; yerinde `Sürüm 1.3.0` — değer `package.json`'dan geliyor, DOM'dan okundu |
+| Sandviç menü | Yok; daraltma durumu tümüyle kalktı |
+| Üst çubuk başlığı | Ekran değiştikçe güncelleniyor (Dönüştür / sıkıştır → Video kırpma → Geçmiş → Ayarlar) |
+| Geçmiş düğmesi | Tıklayınca orta alan geçmişe geçiyor, düğme vurgu mavisiyle seçili görünüyor, kenar çubuğunda hiçbir satır seçili kalmıyor |
+| Pencere sürükleme | Üst çubuktan çift tıklama pencereyi büyütüp küçültüyor — sürükleme bölgesi çalışıyor |
+| Kaydırma | İçerik üst çubuğun altından kayıyor, çubuk yerinde duruyor |
+| Tema düğmesi | Üst çubukta; açık↔karanlık geçişi ve ipucu metni çalışıyor |
+| Dil | Türkçede `Sürüm 1.3.0` / `Geçmiş` / `KAYNAK · ÇIKTI · HEDEF · DURUM · TARİH`, İngilizcede karşılıkları |
+| Geçmiş tablosu | Yeni iki dönüşüm doğru `HEDEF` değerleriyle listelendi (`mp4-h265-aac`, `webm-vp9-opus`) |
+| JSON dışa aktarma | Yerel "Farklı Kaydet" penceresi `lpc-gecmis.json` adıyla açılıyor (dosya yazdırılmadı, iptal edildi) |
+
+**Sınanmayanlar:** "Geçmişi temizle" (kullanıcının kendi verisini siler) ve CSV dışa
+aktarma — JSON ile aynı kod yolu.
+
+### Arayüz testinde bulunan ve düzeltilen iki kusur
+
+**H-09 · Kart görünümü gerçek uygulamada hiç görünmüyordu.** Kart/tablo geçişi
+`@media (max-width: 820px)` ile yazılmıştı; ama pencerenin `minWidth` değeri 920px
+(`electron/main.ts`) ve kenar çubuğu 240px yer kaplıyor — görüntü alanı 820px'in
+altına hiç inemiyor. Pencere en küçük boyuta getirilip ölçüldü: tablo yatay kaydırmaya
+giriyordu, kart görünümü ise hiç tetiklenmiyordu. Ölçü pencereye değil **sayfanın kendi
+genişliğine** çevrildi (`container-type: inline-size` + `@container (max-width: 780px)`).
+Aynı pencerede yeniden ölçüldü: satırlar karta dönüyor, dosya adları kısaltılmadan
+görünüyor; pencere büyütülünce tablo geri geliyor.
+
+**H-10 · İngilizcede "1 records".** Sayaç düz birleştirmeydi. ICU çoğul biçimine
+çevrildi (`{count, plural, one {# record} other {# records}}`); ekranda "1 record",
+Türkçede "3 kayıt" olarak doğrulandı.
+
+### Küçük gözlem (düzeltilmedi)
+
+Uygulama ilk açılışta bir an karanlık temada beliriyor, sonra kayıtlı temaya geçiyor:
+tema `onMount` içinde uygulanıyor, yani ilk boyamadan sonra. Bu kabuk değişikliğinden
+önce de böyleydi (tema mantığına dokunulmadı), ayrı bir iş olarak durabilir.
+
+### Ölçüldü
+
+`typecheck 6/6 · lint 0 hata / 0 uyarı · 275 test · build temiz`
+
+(Kapı bir kez `desktop#test` üzerinde düştü; dev sunucusu `.svelte-kit` dizinini aynı
+anda tazelediği için geçiciydi — tek başına ve turbo ile yeniden koşturulunca 75/75
+geçti.)

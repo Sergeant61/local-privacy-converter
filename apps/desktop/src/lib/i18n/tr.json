@@ -36,7 +36,7 @@
     "title": "Dönüşüm geçmişi",
     "subtitle": "Son 50 işlem yalnızca bu cihazda saklanır; hiçbir yere gönderilmez.",
     "emptyHint": "Bir dönüşüm tamamlandığında burada listelenir.",
-    "count": "{count} kayıt",
+    "count": "{count, plural, other {# kayıt}}",
     "colInput": "Kaynak",
     "colOutput": "Çıktı",
     "colTarget": "Hedef",

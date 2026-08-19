@@ -130,7 +130,12 @@
 </section>
 
 <style>
-  .page { display: flex; flex-direction: column; gap: 1rem; max-width: 1100px; }
+  /* Kart/tablo geçişi pencere genişliğine göre YAPILAMAZ: pencerenin
+     `minWidth`'i 920px (electron/main.ts) ve kenar çubuğu 240px yer
+     kaplıyor, yani görüntü alanı hiçbir zaman 820px'in altına inmiyordu —
+     kart görünümü gerçek uygulamada hiç görünmüyordu. Ölçü artık sayfanın
+     KENDİ genişliği (container sorgusu). */
+  .page { display: flex; flex-direction: column; gap: 1rem; max-width: 1100px; container-type: inline-size; }
   .page-header { margin-bottom: 0.25rem; }
   .page-title { font-size: 1.45rem; font-weight: 700; margin: 0 0 0.3rem; color: var(--text); }
   .page-sub { font-size: 0.88rem; color: var(--muted); margin: 0; }
@@ -188,7 +193,14 @@
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--border);
     vertical-align: middle;
+    /* Uzun dosya adları tabloyu şişirmesin; kısaltma `text-overflow` ile. */
     max-width: 22ch;
+  }
+
+  /* Kaynak/çıktı adları en okunması gereken iki sütun — onlara daha çok pay. */
+  td:first-child,
+  td:nth-child(2) {
+    max-width: 34ch;
   }
 
   tbody tr:last-child td { border-bottom: 0; }
@@ -220,9 +232,10 @@
     white-space: nowrap;
   }
 
-  /* Dar ekran: her satır bir kart. Başlık satırı gizleniyor, hücreler
-     `data-label` ile kendi etiketini gösteriyor. */
-  @media (max-width: 820px) {
+  /* Dar alan: her satır bir kart. Başlık satırı gizleniyor, hücreler
+     `data-label` ile kendi etiketini gösteriyor. Eşik, altı sütunun yatay
+     kaydırmaya başladığı genişlik. */
+  @container (max-width: 780px) {
     thead { display: none; }
     table, tbody, tr, td { display: block; width: 100%; }
 
@@ -259,6 +272,9 @@
       color: var(--muted);
       flex-shrink: 0;
     }
+
+    td:first-child,
+    td:nth-child(2) { max-width: none; }
 
     td span { text-align: right; }
     .col-action { justify-content: flex-end; }

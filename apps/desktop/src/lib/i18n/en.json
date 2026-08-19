@@ -36,7 +36,7 @@
     "title": "Conversion history",
     "subtitle": "The last 50 jobs are kept on this device only; nothing is sent anywhere.",
     "emptyHint": "Completed conversions are listed here.",
-    "count": "{count} records",
+    "count": "{count, plural, one {# record} other {# records}}",
     "colInput": "Source",
     "colOutput": "Output",
     "colTarget": "Target",
