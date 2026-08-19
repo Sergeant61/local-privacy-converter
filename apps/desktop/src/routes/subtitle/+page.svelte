@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
 
   const VIDEO_EXTS = new Set(["mp4","m4v","mkv","webm","avi","mov","wmv","ts","m2ts","mts","3gp","vob"]);
 
@@ -24,6 +26,7 @@
 
   let busy = $state(false);
   let toast = $state<string | null>(null);
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -37,7 +40,7 @@
     toast = null;
     outputPath = null;
     if (!VIDEO_EXTS.has(extOf(label))) {
-      fileError = "Yalnızca video konteyneri desteklenir (MKV, MP4, TS vs.).";
+      fileError = get(_)("subtitle.containerOnly");
       return;
     }
     filePath = path;
@@ -51,7 +54,7 @@
     const r = await window.lfc.subtitleProbe(path);
     probing = false;
     if (r.ok === false) {
-      fileError = `Akış bilgisi alınamadı: ${r.message}`;
+      fileError = get(_)("subtitle.probeFailed", { values: { message: r.message } });
       return;
     }
     streams = r.streams;
@@ -75,7 +78,7 @@
     try {
       void loadFile(window.lfc.getPathForFile(file), file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
   }
 
@@ -83,7 +86,8 @@
     if (!hasLfc || !filePath || !fileLabel || selectedIndex === null) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const dot = fileLabel.lastIndexOf(".");
@@ -94,6 +98,7 @@
 
     busy = true;
     toast = null;
+    toastError = false;
     outputPath = null;
 
     const r = await window.lfc.subtitleExtract({
@@ -106,10 +111,12 @@
 
     if (r.ok) {
       outputPath = outPath;
-      toast = `Altyazı çıkarıldı: ${outPath.split(/[/\\]/).pop()}`;
+      toast = get(_)("subtitle.doneWith", { values: { name: outPath.split(/[/\\]/).pop() } });
     } else {
-      const msg = r.ok === false ? (r.message ?? "Hata") : "Hata";
-      toast = `Hata: ${msg}`;
+      const fallback = get(_)("common.error");
+      const msg = r.ok === false ? (r.message ?? fallback) : fallback;
+      toast = get(_)("common.errorWith", { values: { message: msg } });
+      toastError = true;
     }
   }
 
@@ -117,7 +124,7 @@
     const parts: string[] = [];
     if (s.language) parts.push(s.language.toUpperCase());
     if (s.title) parts.push(s.title);
-    if (!parts.length) parts.push(`Akış #${s.index}`);
+    if (!parts.length) parts.push(get(_)("subtitle.streamFallback", { values: { index: s.index } }));
     parts.push(`(${s.codecName})`);
     return parts.join(" · ");
   }
@@ -127,19 +134,19 @@
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Altyazı Çıkarma</h1>
-    <p class="page-sub">Video dosyasındaki altyazı akışlarını SRT, ASS veya VTT formatında dışa aktarır.</p>
+    <h1 class="page-title">{$_("subtitle.title")}</h1>
+    <p class="page-sub">{$_("subtitle.subtitle")}</p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Video Dosyası</h2>
+    <h2 class="card-title">{$_("subtitle.inputFile")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Video dosyası seç"
+      aria-label={$_("common.pickVideo")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -150,13 +157,13 @@
         <div class="file-info">
           <span class="file-icon" aria-hidden="true">🎬</span>
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">📄</span>
-          <span>Video dosyası seç (tıkla veya sürükle)</span>
-          <span class="drop-sub">MKV, MP4, TS ve altyazı akışı içeren konteynerleri</span>
+          <span>{$_("common.pickVideoHint")}</span>
+          <span class="drop-sub">{$_("subtitle.pickSub")}</span>
         </div>
       {/if}
     </div>
@@ -164,15 +171,15 @@
       <p class="error-msg" role="alert">{fileError}</p>
     {/if}
     {#if probing}
-      <p class="probing-msg">Akışlar taranıyor…</p>
+      <p class="probing-msg">{$_("subtitle.probing")}</p>
     {/if}
   </section>
 
   {#if filePath && !probing}
     <section class="card">
-      <h2 class="card-title">Altyazı Akışları</h2>
+      <h2 class="card-title">{$_("subtitle.streams")}</h2>
       {#if streams.length === 0}
-        <p class="no-streams">Bu dosyada altyazı akışı bulunamadı.</p>
+        <p class="no-streams">{$_("subtitle.noStreams")}</p>
       {:else}
         <div class="streams-list">
           {#each streams as s (s.index)}
@@ -191,7 +198,7 @@
         </div>
 
         <div class="setting-row">
-          <span class="field-label">Çıktı Formatı</span>
+          <span class="field-label">{$_("subtitle.outputFormat")}</span>
           <div class="format-group">
             {#each (["srt", "ass", "vtt"] as const) as fmt (fmt)}
               <button
@@ -208,13 +215,13 @@
 
         <div class="info-box">
           {#if outputFormat === "srt"}
-            <strong>SRT</strong> — En yaygın format; metin tabanlı, zamanlama ve stil desteği sınırlı.
+            <strong>SRT</strong> — {$_("subtitle.infoSrt")}
           {:else if outputFormat === "ass"}
-            <strong>ASS/SSA</strong> — Gelişmiş stil ve konumlandırma desteği; anime altyazıları için yaygın.
+            <strong>ASS/SSA</strong> — {$_("subtitle.infoAss")}
           {:else}
-            <strong>VTT</strong> — Web tarayıcıları için oluşturulmuş format; HTML5 video ile uyumlu.
+            <strong>VTT</strong> — {$_("subtitle.infoVtt")}
           {/if}
-          <br/><small>Not: Kaynak kodek doğrudan desteklenmiyorsa FFmpeg dönüşüm yapar.</small>
+          <br/><small>{$_("subtitle.infoNote")}</small>
         </div>
       {/if}
     </section>
@@ -222,17 +229,17 @@
 
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
     {#if outputPath && !busy}
       <button
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
-      >Dizinde Göster</button>
+      >{$_("common.showInDir")}</button>
     {/if}
     <button type="button" class="btn btn-primary" disabled={!canExtract} onclick={extract}>
-      {#if !filePath}Önce Video Seç{:else if streams.length === 0}Altyazı Yok{:else}Altyazıyı Çıkar{/if}
+      {#if !filePath}{$_("common.selectVideoFirst")}{:else if streams.length === 0}{$_("subtitle.noSubtitle")}{:else}{$_("subtitle.extract")}{/if}
     </button>
   </section>
 </div>

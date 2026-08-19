@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
 
   const VIDEO_EXTS = new Set(["mp4","m4v","mkv","webm","avi","mov","wmv","flv","ogv","mpg","mpeg","ts","m2ts","mts","3gp","3g2","asf","divx","vob","f4v","dv"]);
 
@@ -25,6 +27,9 @@
   let busy = $state(false);
   let progress = $state<number | null>(null);
   let toast = $state<string | null>(null);
+  // Hata biçimi metnin içeriğinden değil bayraktan geliyor: eski
+  // `toast.startsWith("Hata")` denetimi yalnızca Türkçede tutuyordu.
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -34,7 +39,7 @@
   async function loadFile(p: string, label: string) {
     fileError = null;
     if (!VIDEO_EXTS.has(extOf(label))) {
-      fileError = "Yalnızca video dosyaları desteklenir.";
+      fileError = get(_)("common.videoOnly");
       return;
     }
     filePath = p;
@@ -58,7 +63,7 @@
     try {
       void loadFile(window.lfc.getPathForFile(file), file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
   }
 
@@ -66,7 +71,8 @@
     if (!hasLfc || !filePath || !fileLabel) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const dot = fileLabel.lastIndexOf(".");
@@ -86,9 +92,11 @@
 
     if (r.ok) {
       outputPath = outPath;
-      toast = "APNG oluşturuldu!";
+      toast = get(_)("apng.done");
+      toastError = false;
     } else if (r.ok === false) {
-      toast = `Hata: ${r.message ?? "Bilinmeyen hata"}`;
+      toast = get(_)("common.errorWith", { values: { message: r.message ?? get(_)("common.unknownError") } });
+      toastError = true;
     }
   }
 
@@ -96,35 +104,40 @@
     if (hasLfc) await window.lfc.cancelConvert();
     busy = false;
     progress = null;
-    toast = "İptal edildi.";
+    toast = get(_)("common.canceled");
+    toastError = false;
   }
 
   const canStart = $derived(Boolean(filePath && !busy && hasLfc));
 
   const settingsNote = $derived(
-    `${fps} fps · ${apngWidth}px · ${plays === 0 ? "sonsuz döngü" : "bir kez oynat"}`
+    $_("apng.note", {
+      values: {
+        fps,
+        width: apngWidth,
+        loop: $_(plays === 0 ? "apng.loopInfiniteShort" : "apng.loopOnceShort")
+      }
+    })
   );
 </script>
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">APNG Oluştur</h1>
+    <h1 class="page-title">{$_("apng.title")}</h1>
     <p class="page-sub">
-      Videodan animasyonlu PNG üretir. GIF'ten farklı olarak tam renk paleti (32-bit RGBA) destekler;
-      şeffaflık korunur ve görüntü kalitesi çok daha yüksektir.
-      Dosya boyutu GIF'e göre büyük olabilir.
+      {$_("apng.subtitle")}
     </p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Video Dosyası</h2>
+    <h2 class="card-title">{$_("apng.inputFile")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Video dosyası seç"
+      aria-label={$_("common.pickVideo")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -135,13 +148,13 @@
         <div class="file-info">
           <span class="file-icon" aria-hidden="true">🎬</span>
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">🎞️</span>
-          <span>Video dosyası seç (tıkla veya sürükle)</span>
-          <span class="drop-sub">MP4, MKV, MOV, AVI ve daha fazlası</span>
+          <span>{$_("common.pickVideoHint")}</span>
+          <span class="drop-sub">{$_("common.videoExts")}</span>
         </div>
       {/if}
     </div>
@@ -151,10 +164,10 @@
   </section>
 
   <section class="card">
-    <h2 class="card-title">APNG Ayarları</h2>
+    <h2 class="card-title">{$_("apng.settings")}</h2>
 
     <div class="setting-row">
-      <label for="fps" class="field-label">Saniye başına kare (FPS)</label>
+      <label for="fps" class="field-label">{$_("apng.fpsLabel")}</label>
       <input
         id="fps"
         type="number"
@@ -168,7 +181,7 @@
     </div>
 
     <div class="setting-row">
-      <span class="field-label">Genişlik</span>
+      <span class="field-label">{$_("apng.widthLabel")}</span>
       <div class="preset-group">
         {#each WIDTH_PRESETS as wp (wp.value)}
           <button
@@ -182,7 +195,7 @@
     </div>
 
     <div class="setting-row">
-      <span class="field-label">Döngü</span>
+      <span class="field-label">{$_("apng.loop")}</span>
       <div class="format-pair">
         <button
           type="button"
@@ -190,8 +203,8 @@
           class:active={plays === 0}
           onclick={() => (plays = 0)}
         >
-          <strong>Sonsuz</strong>
-          <small>Tekrar tekrar oynat</small>
+          <strong>{$_("apng.infinite")}</strong>
+          <small>{$_("apng.infiniteDesc")}</small>
         </button>
         <button
           type="button"
@@ -199,8 +212,8 @@
           class:active={plays === 1}
           onclick={() => (plays = 1)}
         >
-          <strong>Bir kez</strong>
-          <small>Bir kere oynat, dur</small>
+          <strong>{$_("apng.once")}</strong>
+          <small>{$_("apng.onceDesc")}</small>
         </button>
       </div>
     </div>
@@ -209,31 +222,30 @@
       {settingsNote}
       <br/>
       <small>
-        APNG, GIF'in aksine 16 milyon rengi destekler ve alfa saydamlığını korur.
-        Tarayıcı desteği: Firefox, Chrome, Safari (Edge dahil tüm modern tarayıcılar).
+        {$_("apng.browserNote")}
       </small>
     </div>
   </section>
 
   <section class="card compare-card">
-    <h2 class="card-title">GIF vs APNG</h2>
+    <h2 class="card-title">{$_("apng.compareTitle")}</h2>
     <div class="compare-grid">
       <div class="compare-col">
         <div class="compare-badge badge-gif">GIF</div>
         <ul class="compare-list">
-          <li>256 renk limiti</li>
-          <li>Geniş uyumluluk</li>
-          <li>Küçük dosya boyutu</li>
-          <li>Saydamlık: 1-bit (kısmen)</li>
+          <li>{$_("apng.gifColors")}</li>
+          <li>{$_("apng.gifCompat")}</li>
+          <li>{$_("apng.gifSize")}</li>
+          <li>{$_("apng.gifAlpha")}</li>
         </ul>
       </div>
       <div class="compare-col">
         <div class="compare-badge badge-apng">APNG</div>
         <ul class="compare-list">
-          <li class="highlight">32-bit tam renk</li>
-          <li class="highlight">Tam alfa saydamlık</li>
-          <li>Büyük dosya boyutu</li>
-          <li class="highlight">Yüksek kalite animasyon</li>
+          <li class="highlight">{$_("apng.apngColors")}</li>
+          <li class="highlight">{$_("apng.apngAlpha")}</li>
+          <li>{$_("apng.apngSize")}</li>
+          <li class="highlight">{$_("apng.apngQuality")}</li>
         </ul>
       </div>
     </div>
@@ -241,7 +253,7 @@
 
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
 
     {#if outputPath && !busy}
@@ -249,7 +261,7 @@
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
-      >Klasörü Aç</button>
+      >{$_("common.openFolder")}</button>
     {/if}
 
     {#if busy}
@@ -257,12 +269,12 @@
         <div class="progress-bar">
           <div class="progress-fill" style="width:{progress ?? 0}%" class:indeterminate={progress == null}></div>
         </div>
-        <span class="progress-label">{progress != null ? `%${Math.round(progress)}` : "İşleniyor…"}</span>
+        <span class="progress-label">{progress != null ? `%${Math.round(progress)}` : $_("common.processing")}</span>
       </div>
-      <button type="button" class="btn btn-danger" onclick={cancel}>İptal</button>
+      <button type="button" class="btn btn-danger" onclick={cancel}>{$_("common.cancel")}</button>
     {:else}
       <button type="button" class="btn btn-primary" disabled={!canStart} onclick={startConvert}>
-        {filePath ? "APNG Oluştur" : "Önce Video Seç"}
+        {filePath ? $_("apng.convert") : $_("common.selectVideoFirst")}
       </button>
     {/if}
   </section>

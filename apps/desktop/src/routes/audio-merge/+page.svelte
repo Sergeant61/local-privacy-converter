@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
   import { recordConversion } from "$lib/history/store";
 
   type MergeMode = "concat" | "mix";
@@ -12,11 +14,11 @@
     flac: "flac",
   };
 
-  const FORMAT_OPTIONS: { value: OutputFormat; label: string; desc: string }[] = [
-    { value: "mp3",  label: "MP3",  desc: "Evrensel uyumluluk" },
-    { value: "m4a",  label: "M4A",  desc: "Apple / yüksek kalite" },
-    { value: "wav",  label: "WAV",  desc: "Kayıpsız, büyük dosya" },
-    { value: "flac", label: "FLAC", desc: "Kayıpsız, sıkıştırılmış" },
+  const FORMAT_OPTIONS: { value: OutputFormat; label: string; descKey: string }[] = [
+    { value: "mp3",  label: "MP3",  descKey: "audioMerge.fMp3" },
+    { value: "m4a",  label: "M4A",  descKey: "audioMerge.fM4a" },
+    { value: "wav",  label: "WAV",  descKey: "audioMerge.fWav" },
+    { value: "flac", label: "FLAC", descKey: "audioMerge.fFlac" },
   ];
 
   const AUDIO_EXTS = new Set(["mp3","wav","flac","aac","m4a","m4b","ogg","oga","opus","wma","aiff","aif","ac3","eac3","dts","mka","ape","wv","caf","au"]);
@@ -33,6 +35,9 @@
   let busy = $state(false);
   let progress = $state<number | null>(null);
   let toast = $state<string | null>(null);
+  // Hata biçimi metnin içeriğinden değil bayraktan geliyor: eski
+  // `toast.startsWith("Hata")` denetimi yalnızca Türkçede tutuyordu.
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -42,7 +47,7 @@
   function addFile(path: string, label: string) {
     fileError = null;
     if (!AUDIO_EXTS.has(extOf(label))) {
-      fileError = `"${label}" desteklenmiyor. Yalnızca ses dosyaları eklenebilir.`;
+      fileError = get(_)("audioMerge.unsupported", { values: { name: label } });
       return;
     }
     if (files.find((f) => f.path === path)) return;
@@ -73,7 +78,7 @@
       try {
         addFile(window.lfc.getPathForFile(file), file.name);
       } catch {
-        fileError = "Dosya yolu alınamadı.";
+        fileError = get(_)("common.pathFailed");
       }
     }
   }
@@ -82,7 +87,8 @@
     if (!hasLfc || files.length < 2) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const firstName = files[0]?.label ?? "birlesim";
@@ -110,7 +116,8 @@
 
     if (r.ok) {
       outputPath = outPath;
-      toast = "Birleştirme tamamlandı!";
+      toast = get(_)("audioMerge.done");
+      toastError = false;
       await recordConversion({
         inputFilename: files.map((f) => f.label).join(" + "),
         inputExt: extOf(files[0]?.label ?? ""),
@@ -122,8 +129,9 @@
         status: "success",
       });
     } else {
-      const msg = r.ok === false ? (r.message ?? "Hata") : "Hata";
-      toast = `Hata: ${msg}`;
+      const msg = r.ok === false ? (r.message ?? "") : "";
+      toast = get(_)("common.errorWith", { values: { message: msg || get(_)("common.error") } });
+      toastError = true;
     }
   }
 
@@ -131,7 +139,8 @@
     if (hasLfc) await window.lfc.cancelConvert();
     busy = false;
     progress = null;
-    toast = "İptal edildi.";
+    toast = get(_)("common.canceled");
+    toastError = false;
   }
 
   const canStart = $derived(files.length >= 2 && !busy && hasLfc);
@@ -139,20 +148,20 @@
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Ses Birleştirme</h1>
-    <p class="page-sub">Birden fazla ses dosyasını tek parçaya birleştirir. Sıralı (concat) veya eş zamanlı (mix) mod seçilebilir.</p>
+    <h1 class="page-title">{$_("audioMerge.title")}</h1>
+    <p class="page-sub">{$_("audioMerge.pageSubtitle")}</p>
   </header>
 
   <!-- Dosya Listesi -->
   <section class="card">
-    <h2 class="card-title">Ses Dosyaları ({files.length}/∞ — en az 2)</h2>
+    <h2 class="card-title">{$_("audioMerge.filesTitle", { values: { count: files.length } })}</h2>
 
     <div
       class="drop-zone"
       class:drag={isDragging}
       role="button"
       tabindex="0"
-      aria-label="Ses dosyası eklemek için tıkla veya sürükle"
+      aria-label={$_("audioMerge.addAria")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -160,8 +169,8 @@
       onkeydown={(e) => e.key === "Enter" && onPick()}
     >
       <span class="drop-icon" aria-hidden="true">🎵</span>
-      <span>Ses dosyası ekle (tıkla veya sürükle)</span>
-      <span class="drop-sub">MP3, WAV, FLAC, M4A, OGG ve daha fazlası</span>
+      <span>{$_("audioMerge.addHint")}</span>
+      <span class="drop-sub">{$_("audioMerge.audioExts")}</span>
     </div>
 
     {#if fileError}
@@ -177,7 +186,7 @@
             <button
               type="button"
               class="remove-btn"
-              aria-label="Kaldır"
+              aria-label={$_("common.remove")}
               onclick={() => removeFile(i)}
             >✕</button>
           </li>
@@ -188,10 +197,10 @@
 
   <!-- Ayarlar -->
   <section class="card">
-    <h2 class="card-title">Birleştirme Ayarları</h2>
+    <h2 class="card-title">{$_("audioMerge.settings")}</h2>
 
     <div class="setting-group">
-      <span class="field-label">Mod</span>
+      <span class="field-label">{$_("audioMerge.modeLabel")}</span>
       <div class="toggle-pair">
         <button
           type="button"
@@ -199,8 +208,8 @@
           class:active={mergeMode === "concat"}
           onclick={() => (mergeMode = "concat")}
         >
-          <strong>Sıralı (Concat)</strong>
-          <small>Dosyalar art arda çalar</small>
+          <strong>{$_("audioMerge.concat")}</strong>
+          <small>{$_("audioMerge.concatDesc")}</small>
         </button>
         <button
           type="button"
@@ -208,14 +217,14 @@
           class:active={mergeMode === "mix"}
           onclick={() => (mergeMode = "mix")}
         >
-          <strong>Karıştır (Mix)</strong>
-          <small>Dosyalar eş zamanlı çalar</small>
+          <strong>{$_("audioMerge.mix")}</strong>
+          <small>{$_("audioMerge.mixDesc")}</small>
         </button>
       </div>
     </div>
 
     <div class="setting-group">
-      <span class="field-label">Çıktı Formatı</span>
+      <span class="field-label">{$_("audioMerge.outputFormat")}</span>
       <div class="format-grid">
         {#each FORMAT_OPTIONS as opt (opt.value)}
           <button
@@ -225,7 +234,7 @@
             onclick={() => (outputFormat = opt.value)}
           >
             <span class="format-label">{opt.label}</span>
-            <span class="format-desc">{opt.desc}</span>
+            <span class="format-desc">{$_(opt.descKey)}</span>
           </button>
         {/each}
       </div>
@@ -235,7 +244,7 @@
   <!-- Kontrol -->
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
 
     {#if outputPath && !busy}
@@ -243,7 +252,7 @@
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
-      >Dizinde Göster</button>
+      >{$_("common.showInDir")}</button>
     {/if}
 
     {#if busy}
@@ -255,9 +264,9 @@
             class:indeterminate={progress == null}
           ></div>
         </div>
-        <span class="progress-label">{progress != null ? `%${Math.round(progress)}` : "İşleniyor…"}</span>
+        <span class="progress-label">{progress != null ? `%${Math.round(progress)}` : $_("common.processing")}</span>
       </div>
-      <button type="button" class="btn btn-danger" onclick={cancel}>İptal</button>
+      <button type="button" class="btn btn-danger" onclick={cancel}>{$_("common.cancel")}</button>
     {:else}
       <button
         type="button"
@@ -265,7 +274,7 @@
         disabled={!canStart}
         onclick={startMerge}
       >
-        {files.length < 2 ? "En az 2 dosya ekle" : "Birleştirmeyi Başlat"}
+        {files.length < 2 ? $_("audioMerge.needTwo") : $_("audioMerge.start")}
       </button>
     {/if}
   </section>

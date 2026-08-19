@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
 
   const VIDEO_EXTS = new Set(["mp4","m4v","mkv","webm","avi","mov","wmv","ts","m2ts","mts","3gp"]);
   const IMAGE_EXTS = new Set(["png","jpg","jpeg","webp","gif"]);
@@ -14,7 +16,7 @@
   type WatermarkMode = "text" | "image";
   let mode = $state<WatermarkMode>("text");
 
-  let wmText = $state("© Filigran");
+  let wmText = $state(get(_)("watermark.textPlaceholder"));
   let fontSize = $state(36);
   let fontColor = $state("white");
   let opacity = $state(0.6);
@@ -27,17 +29,18 @@
   type Position = "topleft" | "topright" | "bottomleft" | "bottomright" | "center";
   let position = $state<Position>("bottomright");
 
-  const POSITIONS: { value: Position; label: string }[] = [
-    { value: "topleft",     label: "Sol Üst" },
-    { value: "topright",    label: "Sağ Üst" },
-    { value: "center",      label: "Merkez" },
-    { value: "bottomleft",  label: "Sol Alt" },
-    { value: "bottomright", label: "Sağ Alt" },
+  const POSITIONS: { value: Position; labelKey: string }[] = [
+    { value: "topleft",     labelKey: "watermark.posTopLeft" },
+    { value: "topright",    labelKey: "watermark.posTopRight" },
+    { value: "center",      labelKey: "watermark.posCenter" },
+    { value: "bottomleft",  labelKey: "watermark.posBottomLeft" },
+    { value: "bottomright", labelKey: "watermark.posBottomRight" },
   ];
 
   let busy = $state(false);
   let progress = $state<number | null>(null);
   let toast = $state<string | null>(null);
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -49,7 +52,7 @@
     toast = null;
     outputPath = null;
     if (!VIDEO_EXTS.has(extOf(label))) {
-      fileError = "Yalnızca video dosyası desteklenir.";
+      fileError = get(_)("common.videoOnly");
       return;
     }
     filePath = path;
@@ -71,13 +74,13 @@
     const file = e.dataTransfer?.files.item(0);
     if (!file) return;
     try { void loadVideoFile(window.lfc.getPathForFile(file), file.name); }
-    catch { fileError = "Dosya yolu alınamadı."; }
+    catch { fileError = get(_)("common.pathFailed"); }
   }
 
   function loadImageFile(path: string, label: string) {
     imageError = null;
     if (!IMAGE_EXTS.has(extOf(label))) {
-      imageError = "PNG, JPG veya WebP görsel seçin.";
+      imageError = get(_)("watermark.imageInvalid");
       return;
     }
     imagePath = path;
@@ -90,7 +93,7 @@
     const file = e.dataTransfer?.files.item(0);
     if (!file) return;
     try { loadImageFile(window.lfc.getPathForFile(file), file.name); }
-    catch { imageError = "Dosya yolu alınamadı."; }
+    catch { imageError = get(_)("common.pathFailed"); }
   }
 
   const canApply = $derived(Boolean(
@@ -102,7 +105,8 @@
     if (!hasLfc || !filePath || !fileLabel) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const dot = fileLabel.lastIndexOf(".");
@@ -113,6 +117,7 @@
     busy = true;
     progress = null;
     toast = null;
+    toastError = false;
     outputPath = null;
 
     const r = await window.lfc.watermark(
@@ -134,28 +139,29 @@
 
     if (r.ok) {
       outputPath = out;
-      toast = `Filigran eklendi: ${out.split(/[/\\]/).pop()}`;
+      toast = get(_)("watermark.doneWith", { values: { name: out.split(/[/\\]/).pop() } });
     } else if (r.ok === false) {
-      toast = `Hata: ${r.message}`;
+      toast = get(_)("common.errorWith", { values: { message: r.message } });
+      toastError = true;
     }
   }
 </script>
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Filigran Ekleme</h1>
-    <p class="page-sub">Video dosyasına metin veya görsel filigran (watermark) ekle.</p>
+    <h1 class="page-title">{$_("watermark.title")}</h1>
+    <p class="page-sub">{$_("watermark.subtitle")}</p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Video Dosyası</h2>
+    <h2 class="card-title">{$_("watermark.inputFile")}</h2>
     <div
       class="drop-zone"
       class:drag={isDraggingVideo}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Video dosyası seç"
+      aria-label={$_("common.pickVideo")}
       ondragover={(e) => { e.preventDefault(); isDraggingVideo = true; }}
       ondragleave={() => (isDraggingVideo = false)}
       ondrop={(e) => { e.preventDefault(); onDropVideo(e); }}
@@ -166,12 +172,12 @@
         <div class="file-info">
           <span class="file-icon" aria-hidden="true">🎬</span>
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">🎞️</span>
-          <span>Video dosyası seç (tıkla veya sürükle)</span>
+          <span>{$_("common.pickVideoHint")}</span>
         </div>
       {/if}
     </div>
@@ -181,37 +187,37 @@
   </section>
 
   <section class="card">
-    <h2 class="card-title">Filigran Tipi</h2>
+    <h2 class="card-title">{$_("watermark.mode")}</h2>
     <div class="mode-group">
       <button
         type="button"
         class="mode-btn"
         class:active={mode === "text"}
         onclick={() => (mode = "text")}
-      >Metin</button>
+      >{$_("watermark.modeText")}</button>
       <button
         type="button"
         class="mode-btn"
         class:active={mode === "image"}
         onclick={() => (mode = "image")}
-      >Görsel</button>
+      >{$_("watermark.modeImage")}</button>
     </div>
 
     {#if mode === "text"}
       <label class="field-block">
-        <span class="field-label">Metin</span>
-        <input type="text" bind:value={wmText} class="text-input" placeholder="© Filigran" maxlength="100" />
+        <span class="field-label">{$_("watermark.text")}</span>
+        <input type="text" bind:value={wmText} class="text-input" placeholder={$_("watermark.textPlaceholder")} maxlength="100" />
       </label>
       <div class="two-col">
         <label class="field-block">
-          <span class="field-label">Yazı Boyutu</span>
+          <span class="field-label">{$_("watermark.fontSize")}</span>
           <div class="param-row">
             <input type="range" min="12" max="120" step="2" bind:value={fontSize} class="range-input" />
             <span class="param-val">{fontSize}px</span>
           </div>
         </label>
         <label class="field-block">
-          <span class="field-label">Yazı Rengi</span>
+          <span class="field-label">{$_("watermark.fontColor")}</span>
           <div class="color-row">
             {#each ["white","black","yellow","red","cyan"] as c (c)}
               <button
@@ -233,7 +239,7 @@
         class:has-file={!!imagePath}
         role="button"
         tabindex="0"
-        aria-label="Görsel seç"
+        aria-label={$_("watermark.pickImage")}
         ondragover={(e) => { e.preventDefault(); isDraggingImage = true; }}
         ondragleave={() => (isDraggingImage = false)}
         ondrop={(e) => { e.preventDefault(); onDropImage(e); }}
@@ -254,11 +260,11 @@
           <div class="file-info">
             <span class="file-icon" aria-hidden="true">🖼️</span>
             <span class="file-name">{imageLabel}</span>
-            <span class="change-hint">Değiştirmek için tıkla</span>
+            <span class="change-hint">{$_("common.changeHint")}</span>
           </div>
         {:else}
           <div class="drop-hint">
-            <span>PNG / JPG / WebP seç</span>
+            <span>{$_("watermark.pickImageHint")}</span>
           </div>
         {/if}
       </div>
@@ -268,12 +274,12 @@
     {/if}
 
     <label class="field-block">
-      <span class="field-label">Opaklık — {Math.round(opacity * 100)}%</span>
+      <span class="field-label">{$_("watermark.opacityWith", { values: { pct: Math.round(opacity * 100) } })}</span>
       <input type="range" min="0.05" max="1" step="0.05" bind:value={opacity} class="range-input" />
     </label>
 
     <div class="field-block">
-      <span class="field-label">Konum</span>
+      <span class="field-label">{$_("watermark.position")}</span>
       <div class="position-grid">
         {#each POSITIONS as pos (pos.value)}
           <button
@@ -281,7 +287,7 @@
             class="pos-btn"
             class:active={position === pos.value}
             onclick={() => (position = pos.value)}
-          >{pos.label}</button>
+          >{$_(pos.labelKey)}</button>
         {/each}
       </div>
     </div>
@@ -297,14 +303,14 @@
       </div>
     {/if}
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
     {#if outputPath && !busy}
       <button
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
-      >Dizinde Göster</button>
+      >{$_("common.showInDir")}</button>
     {/if}
     <button
       type="button"
@@ -312,7 +318,7 @@
       disabled={!canApply}
       onclick={apply}
     >
-      {#if busy}Ekleniyor…{:else if !filePath}Önce Video Seç{:else}Filigran Ekle{/if}
+      {#if busy}{$_("watermark.adding")}{:else if !filePath}{$_("common.selectVideoFirst")}{:else}{$_("watermark.add")}{/if}
     </button>
   </section>
 </div>

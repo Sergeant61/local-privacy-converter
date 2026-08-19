@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
 
   const VIDEO_EXTS = new Set(["mp4","m4v","mkv","webm","avi","mov","wmv","ts","m2ts","mts","3gp","flv","vob"]);
   const AUDIO_EXTS = new Set(["mp3","wav","m4a","flac","opus","aac","ogg","wma"]);
@@ -23,6 +25,9 @@
   let busy = $state(false);
   let progress = $state<number | null>(null);
   let toast = $state<string | null>(null);
+  // Hata biçimi metnin içeriğinden değil bayraktan geliyor: eski
+  // `toast.startsWith("Hata")` denetimi yalnızca Türkçede tutuyordu.
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -46,7 +51,7 @@
     toast = null;
     outputPath = null;
     if (!isMedia(label)) {
-      fileError = "Video veya ses dosyası seçin.";
+      fileError = get(_)("common.avOnly");
       return;
     }
     filePath = path;
@@ -80,7 +85,7 @@
     try {
       void loadFile(window.lfc.getPathForFile(file), file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
   }
 
@@ -108,7 +113,8 @@
     if (!hasLfc || !filePath || !fileLabel) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const dot = fileLabel.lastIndexOf(".");
@@ -132,28 +138,30 @@
 
     if (r.ok) {
       outputPath = out;
-      toast = `Kırpma tamamlandı: ${out.split(/[/\\]/).pop()}`;
+      toast = get(_)("trim.doneWith", { values: { file: out.split(/[/\\]/).pop() } });
+      toastError = false;
     } else if (r.ok === false) {
-      toast = `Hata: ${r.message}`;
+      toast = get(_)("common.errorWith", { values: { message: r.message } });
+      toastError = true;
     }
   }
 </script>
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Video Kırpma</h1>
-    <p class="page-sub">Başlangıç ve bitiş noktası belirleyerek video veya ses dosyasını kırp.</p>
+    <h1 class="page-title">{$_("trim.title")}</h1>
+    <p class="page-sub">{$_("trim.pageSubtitle")}</p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Dosya</h2>
+    <h2 class="card-title">{$_("common.file")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Dosya seç"
+      aria-label={$_("common.pickFile")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -167,12 +175,12 @@
           {#if durationSec != null}
             <span class="file-dur">{formatDuration(durationSec)}</span>
           {/if}
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">✂️</span>
-          <span>Video veya ses dosyası seç (tıkla veya sürükle)</span>
+          <span>{$_("common.pickMediaHint")}</span>
         </div>
       {/if}
     </div>
@@ -183,24 +191,24 @@
 
   {#if filePath}
     <section class="card">
-      <h2 class="card-title">Kırpma Aralığı</h2>
+      <h2 class="card-title">{$_("trim.range")}</h2>
 
       <div class="time-row">
         <div class="time-group">
-          <span class="time-label">Başlangıç</span>
+          <span class="time-label">{$_("trim.start")}</span>
           <div class="time-inputs">
             <label class="time-field">
-              <span>Saat</span>
+              <span>{$_("common.hours")}</span>
               <input type="number" min="0" max="99" bind:value={startH} class="time-input" />
             </label>
             <span class="time-sep">:</span>
             <label class="time-field">
-              <span>Dakika</span>
+              <span>{$_("common.minutes")}</span>
               <input type="number" min="0" max="59" bind:value={startM} class="time-input" />
             </label>
             <span class="time-sep">:</span>
             <label class="time-field">
-              <span>Saniye</span>
+              <span>{$_("common.seconds")}</span>
               <input type="number" min="0" max="59" bind:value={startS} class="time-input" />
             </label>
           </div>
@@ -209,20 +217,20 @@
         <div class="time-arrow" aria-hidden="true">→</div>
 
         <div class="time-group">
-          <span class="time-label">Bitiş</span>
+          <span class="time-label">{$_("trim.end")}</span>
           <div class="time-inputs">
             <label class="time-field">
-              <span>Saat</span>
+              <span>{$_("common.hours")}</span>
               <input type="number" min="0" max="99" bind:value={endH} class="time-input" />
             </label>
             <span class="time-sep">:</span>
             <label class="time-field">
-              <span>Dakika</span>
+              <span>{$_("common.minutes")}</span>
               <input type="number" min="0" max="59" bind:value={endM} class="time-input" />
             </label>
             <span class="time-sep">:</span>
             <label class="time-field">
-              <span>Saniye</span>
+              <span>{$_("common.seconds")}</span>
               <input type="number" min="0" max="59" bind:value={endS} class="time-input" />
             </label>
           </div>
@@ -230,18 +238,18 @@
       </div>
 
       {#if durSec > 0}
-        <p class="duration-hint">Seçilen süre: <strong>{formatDuration(durSec)}</strong></p>
+        <p class="duration-hint">{$_("trim.selectedDuration", { values: { duration: formatDuration(durSec) } })}</p>
       {:else if endSec <= startSec}
-        <p class="error-msg" role="alert">Bitiş zamanı başlangıçtan büyük olmalı.</p>
+        <p class="error-msg" role="alert">{$_("trim.endAfterStart")}</p>
       {/if}
 
       <div class="option-row">
         <label class="checkbox-label">
           <input type="checkbox" bind:checked={streamCopy} />
-          <span>Hızlı kırpma (stream copy) — yeniden kodlama yok, anlık</span>
+          <span>{$_("trim.streamCopy")}</span>
         </label>
         {#if !streamCopy}
-          <p class="info-note">Yeniden kodlama modunda işlem uzun sürebilir ama kırpma noktaları tam kare bazlı olur.</p>
+          <p class="info-note">{$_("trim.reencodeNote")}</p>
         {/if}
       </div>
     </section>
@@ -260,14 +268,14 @@
       </div>
     {/if}
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
     {#if outputPath && !busy}
       <button
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
-      >Dizinde Göster</button>
+      >{$_("common.showInDir")}</button>
     {/if}
     <button
       type="button"
@@ -275,7 +283,7 @@
       disabled={!canTrim}
       onclick={trim}
     >
-      {#if busy}Kırpılıyor…{:else if !filePath}Önce Dosya Seç{:else}Kırp{/if}
+      {#if busy}{$_("trim.trimming")}{:else if !filePath}{$_("common.selectFileFirst")}{:else}{$_("trim.trim")}{/if}
     </button>
   </section>
 </div>
@@ -309,7 +317,6 @@
   .time-sep { font-size: 1.2rem; font-weight: 700; color: var(--muted); margin-top: 1.1rem; }
   .time-arrow { font-size: 1.5rem; color: var(--muted); margin-top: 1.5rem; }
   .duration-hint { font-size: 0.88rem; color: var(--muted); margin: 0; }
-  .duration-hint strong { color: var(--text); }
   .option-row { display: flex; flex-direction: column; gap: 0.4rem; }
   .checkbox-label { display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem; color: var(--text); cursor: pointer; user-select: none; }
   .checkbox-label input { width: 1rem; height: 1rem; accent-color: var(--accent-start); }

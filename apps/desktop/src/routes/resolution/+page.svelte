@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
   import { onMount } from "svelte";
   import { recordConversion } from "$lib/history/store";
   import { normalizeExtension } from "@lfc/media-formats";
@@ -7,14 +9,15 @@
 
   type ResolutionPreset = "360p" | "480p" | "720p" | "1080p" | "1440p" | "2160p" | "custom";
 
-  const PRESET_OPTIONS: { value: ResolutionPreset; label: string; desc: string; width: number }[] = [
-    { value: "360p",  label: "360p",       desc: "640 × 360 — düşük bant",   width: 640  },
-    { value: "480p",  label: "480p",       desc: "854 × 480 — SD",            width: 854  },
-    { value: "720p",  label: "720p HD",    desc: "1280 × 720 — HD",           width: 1280 },
-    { value: "1080p", label: "1080p FHD",  desc: "1920 × 1080 — Full HD",     width: 1920 },
-    { value: "1440p", label: "1440p 2K",   desc: "2560 × 1440 — 2K / QHD",   width: 2560 },
-    { value: "2160p", label: "2160p 4K",   desc: "3840 × 2160 — 4K / UHD",   width: 3840 },
-    { value: "custom",label: "Özel",       desc: "Kendi genişliğini gir",     width: 0    },
+  const PRESET_OPTIONS: { value: ResolutionPreset; label: string | null; descKey: string; width: number }[] = [
+    { value: "360p",  label: "360p",      descKey: "resolution.desc360",    width: 640  },
+    { value: "480p",  label: "480p",      descKey: "resolution.desc480",    width: 854  },
+    { value: "720p",  label: "720p HD",   descKey: "resolution.desc720",    width: 1280 },
+    { value: "1080p", label: "1080p FHD", descKey: "resolution.desc1080",   width: 1920 },
+    { value: "1440p", label: "1440p 2K",  descKey: "resolution.desc1440",   width: 2560 },
+    { value: "2160p", label: "2160p 4K",  descKey: "resolution.desc2160",   width: 3840 },
+    // Etiketi çevrilen tek seçenek: diğerleri çözünürlük adı.
+    { value: "custom",label: null,        descKey: "resolution.descCustom", width: 0    },
   ];
 
   const VIDEO_EXTS = new Set(["mp4","m4v","mkv","webm","avi","mov","wmv","flv","ogv","mpg","mpeg","ts","m2ts","mts","3gp","3g2","asf","divx","vob","f4v","dv"]);
@@ -36,6 +39,7 @@
   let busy = $state(false);
   let progress = $state<number | null>(null);
   let toast = $state<string | null>(null);
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
   let outputPreviewUrl = $state<string | null>(null);
 
@@ -55,7 +59,7 @@
     toast = null;
     const kind = getFileType(label);
     if (!kind) {
-      fileError = "Desteklenmeyen dosya türü. Yalnızca video ve görüntü dosyaları kabul edilir.";
+      fileError = get(_)("aspectRatio.unsupported");
       return;
     }
     filePath = path;
@@ -86,7 +90,7 @@
       const path = window.lfc.getPathForFile(file);
       void loadFile(path, file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
   }
 
@@ -98,7 +102,7 @@
       const path = window.lfc.getPathForFile(file);
       void loadFile(path, file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
     input.value = "";
   }
@@ -118,14 +122,16 @@
     if (!hasLfc || !filePath || !fileLabel) return;
     const width = effectiveWidth();
     if (!width || width <= 0 || width > 7680) {
-      toast = "Geçersiz genişlik. 1–7680 arasında bir değer gir.";
+      toast = get(_)("resolution.invalidWidth");
+      toastError = true;
       return;
     }
 
     const ext = normalizeExtension(fileLabel);
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const filename = suggestOutputName(fileLabel, ext);
@@ -140,6 +146,7 @@
     busy = true;
     progress = null;
     toast = null;
+    toastError = false;
     outputPath = null;
     outputPreviewUrl = null;
 
@@ -172,7 +179,7 @@
 
     if (r.ok) {
       outputPath = outPath;
-      toast = "Yeniden boyutlandırma tamamlandı!";
+      toast = get(_)("resolution.done");
       await recordConversion({
         inputFilename: fileLabel,
         inputExt,
@@ -188,8 +195,10 @@
         if (prev.ok) outputPreviewUrl = prev.dataUrl;
       }
     } else {
-      const errMsg = r.ok === false ? (r.message ?? "Bilinmeyen hata") : "Bilinmeyen hata";
-      toast = `Hata: ${errMsg}`;
+      const unknown = get(_)("common.unknownError");
+      const errMsg = r.ok === false ? (r.message ?? unknown) : unknown;
+      toast = get(_)("common.errorWith", { values: { message: errMsg } });
+      toastError = true;
       await recordConversion({
         inputFilename: fileLabel,
         inputExt,
@@ -208,7 +217,8 @@
     if (hasLfc) await window.lfc.cancelConvert();
     busy = false;
     progress = null;
-    toast = "İptal edildi.";
+    toast = get(_)("common.canceled");
+    toastError = false;
   }
 
   const canStart = $derived(Boolean(filePath && !busy && hasLfc));
@@ -217,20 +227,20 @@
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Çözünürlük Ölçekleme</h1>
-    <p class="page-sub">Videoyu veya görüntüyü belirtilen genişliğe yeniden boyutlandırır. En-boy oranı korunur.</p>
+    <h1 class="page-title">{$_("resolution.title")}</h1>
+    <p class="page-sub">{$_("resolution.subtitle")}</p>
   </header>
 
   <!-- Dosya Seçici -->
   <section class="card">
-    <h2 class="card-title">Dosya Seç</h2>
+    <h2 class="card-title">{$_("resolution.inputFile")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Dosya seçmek için tıkla veya sürükle bırak"
+      aria-label={$_("common.pickFileHint")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -240,18 +250,18 @@
       {#if filePath}
         <div class="file-info">
           {#if inputPreviewUrl}
-            <img class="preview-thumb" src={inputPreviewUrl} alt="Önizleme" />
+            <img class="preview-thumb" src={inputPreviewUrl} alt={$_("common.preview")} />
           {:else}
             <span class="file-icon" aria-hidden="true">🎬</span>
           {/if}
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">📂</span>
-          <span>Video veya görüntü dosyasını sürükle ya da tıkla</span>
-          <span class="drop-sub">MP4, MKV, MOV, PNG, JPG, WebP ve daha fazlası</span>
+          <span>{$_("aspectRatio.pickHint")}</span>
+          <span class="drop-sub">{$_("aspectRatio.pickSub")}</span>
         </div>
       {/if}
     </div>
@@ -270,7 +280,7 @@
 
   <!-- Çözünürlük Seçici -->
   <section class="card">
-    <h2 class="card-title">Hedef Çözünürlük</h2>
+    <h2 class="card-title">{$_("resolution.preset")}</h2>
 
     <div class="preset-grid">
       {#each PRESET_OPTIONS as opt (opt.value)}
@@ -280,15 +290,15 @@
           class:active={selectedPreset === opt.value}
           onclick={() => (selectedPreset = opt.value)}
         >
-          <span class="preset-label">{opt.label}</span>
-          <span class="preset-desc">{opt.desc}</span>
+          <span class="preset-label">{opt.label ?? $_("common.custom")}</span>
+          <span class="preset-desc">{$_(opt.descKey)}</span>
         </button>
       {/each}
     </div>
 
     {#if selectedPreset === "custom"}
       <div class="custom-row">
-        <label for="custom-width" class="field-label">Genişlik (px)</label>
+        <label for="custom-width" class="field-label">{$_("resolution.customWidth")}</label>
         <input
           id="custom-width"
           class="num-input"
@@ -304,26 +314,26 @@
 
     <!-- Oran bilgisi -->
     <div class="info-row">
-      <span class="info-label">Seçili genişlik:</span>
+      <span class="info-label">{$_("resolution.selectedWidth")}</span>
       <span class="info-value">{currentWidth} px</span>
-      <span class="info-label" style="margin-left:1rem">Yükseklik:</span>
-      <span class="info-value">orantılı (otomatik)</span>
+      <span class="info-label" style="margin-left:1rem">{$_("resolution.heightLabel")}</span>
+      <span class="info-value">{$_("resolution.heightAuto")}</span>
     </div>
 
     <!-- En boy oranı koruma -->
     <label class="toggle-row">
       <input type="checkbox" bind:checked={keepAspect} class="sr-only" />
       <span class="toggle-switch" class:on={keepAspect} role="switch" aria-checked={keepAspect}></span>
-      <span class="toggle-label">En-boy oranını koru (önerilen)</span>
+      <span class="toggle-label">{$_("resolution.keepAspect")}</span>
     </label>
   </section>
 
   <!-- Çıktı Önizleme -->
   {#if outputPreviewUrl}
     <section class="card">
-      <h2 class="card-title">Çıktı Önizlemesi</h2>
+      <h2 class="card-title">{$_("resolution.outputPreview")}</h2>
       <div class="output-preview">
-        <img class="output-img" src={outputPreviewUrl} alt="Yeniden boyutlandırılmış çıktı" />
+        <img class="output-img" src={outputPreviewUrl} alt={$_("resolution.outputAlt")} />
       </div>
     </section>
   {/if}
@@ -331,7 +341,7 @@
   <!-- Kontrol Paneli -->
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
 
     {#if outputPath && !busy}
@@ -340,7 +350,7 @@
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
       >
-        Dizinde Göster
+        {$_("common.showInDir")}
       </button>
     {/if}
 
@@ -354,10 +364,10 @@
           ></div>
         </div>
         <span class="progress-label">
-          {progress != null ? `%${Math.round(progress)}` : "İşleniyor…"}
+          {progress != null ? `%${Math.round(progress)}` : $_("common.processing")}
         </span>
       </div>
-      <button type="button" class="btn btn-danger" onclick={cancelResize}>İptal</button>
+      <button type="button" class="btn btn-danger" onclick={cancelResize}>{$_("common.cancel")}</button>
     {:else}
       <button
         type="button"
@@ -365,7 +375,7 @@
         disabled={!canStart}
         onclick={startResize}
       >
-        {filePath ? "Yeniden Boyutlandır" : "Önce Dosya Seç"}
+        {filePath ? $_("resolution.start") : $_("common.selectFileFirstBtn")}
       </button>
     {/if}
   </section>

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
   import { recordConversion } from "$lib/history/store";
 
   const VIDEO_EXTS = new Set(["mp4","m4v","mkv","webm","avi","mov","wmv","flv","ogv","mpg","mpeg","ts","m2ts","mts","3gp","3g2","asf","divx","vob","f4v","dv"]);
@@ -13,6 +15,9 @@
   let busy = $state(false);
   let progress = $state<number | null>(null);
   let toast = $state<string | null>(null);
+  // Hata biçimi metnin içeriğinden değil bayraktan geliyor: eski
+  // `toast.startsWith("Hata")` denetimi yalnızca Türkçede tutuyordu.
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -22,7 +27,7 @@
   function addFile(path: string, label: string) {
     fileError = null;
     if (!VIDEO_EXTS.has(extOf(label))) {
-      fileError = `"${label}" desteklenmiyor. Yalnızca video dosyaları eklenebilir.`;
+      fileError = get(_)("videoMerge.unsupported", { values: { name: label } });
       return;
     }
     if (files.find((f) => f.path === path)) return;
@@ -63,7 +68,7 @@
       try {
         addFile(window.lfc.getPathForFile(file), file.name);
       } catch {
-        fileError = "Dosya yolu alınamadı.";
+        fileError = get(_)("common.pathFailed");
       }
     }
   }
@@ -72,7 +77,8 @@
     if (!hasLfc || files.length < 2) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const firstName = files[0]?.label ?? "video";
@@ -96,7 +102,8 @@
 
     if (r.ok) {
       outputPath = outPath;
-      toast = "Video birleştirme tamamlandı!";
+      toast = get(_)("videoMerge.success");
+      toastError = false;
       await recordConversion({
         inputFilename: files.map((f) => f.label).join(" + "),
         inputExt: ext,
@@ -108,8 +115,9 @@
         status: "success",
       });
     } else {
-      const msg = r.ok === false ? (r.message ?? "Hata") : "Hata";
-      toast = `Hata: ${msg}`;
+      const msg = r.ok === false ? (r.message ?? "") : "";
+      toast = get(_)("common.errorWith", { values: { message: msg || get(_)("common.error") } });
+      toastError = true;
     }
   }
 
@@ -117,7 +125,8 @@
     if (hasLfc) await window.lfc.cancelConvert();
     busy = false;
     progress = null;
-    toast = "İptal edildi.";
+    toast = get(_)("common.canceled");
+    toastError = false;
   }
 
   const canStart = $derived(files.length >= 2 && !busy && hasLfc);
@@ -125,19 +134,19 @@
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Video Birleştirme</h1>
-    <p class="page-sub">Video dosyalarını sırayla birleştirir. Tüm dosyalar aynı codec ve çözünürlükte olmalıdır (aksi takdirde stream copy başarısız olabilir).</p>
+    <h1 class="page-title">{$_("videoMerge.title")}</h1>
+    <p class="page-sub">{$_("videoMerge.pageSubtitle")}</p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Video Dosyaları ({files.length}/∞ — en az 2)</h2>
+    <h2 class="card-title">{$_("videoMerge.filesTitle", { values: { count: files.length } })}</h2>
 
     <div
       class="drop-zone"
       class:drag={isDragging}
       role="button"
       tabindex="0"
-      aria-label="Video dosyası ekle"
+      aria-label={$_("videoMerge.addVideo")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -145,8 +154,8 @@
       onkeydown={(e) => e.key === "Enter" && onPick()}
     >
       <span class="drop-icon" aria-hidden="true">🎬</span>
-      <span>Video dosyası ekle (tıkla veya sürükle)</span>
-      <span class="drop-sub">MP4, MKV, MOV, AVI ve daha fazlası</span>
+      <span>{$_("videoMerge.addVideoHint")}</span>
+      <span class="drop-sub">{$_("common.videoExts")}</span>
     </div>
 
     {#if fileError}
@@ -154,16 +163,16 @@
     {/if}
 
     {#if files.length > 0}
-      <p class="hint">Sırayı değiştirmek için ↑↓ butonlarını kullan.</p>
+      <p class="hint">{$_("videoMerge.orderHint")}</p>
       <ul class="file-list">
         {#each files as f, i (f.path)}
           <li class="file-item">
             <span class="file-idx">{i + 1}</span>
             <span class="file-name">{f.label}</span>
             <div class="file-actions">
-              <button type="button" class="order-btn" disabled={i === 0} onclick={() => moveFile(i, -1)} aria-label="Yukarı taşı">↑</button>
-              <button type="button" class="order-btn" disabled={i === files.length - 1} onclick={() => moveFile(i, 1)} aria-label="Aşağı taşı">↓</button>
-              <button type="button" class="remove-btn" onclick={() => removeFile(i)} aria-label="Kaldır">✕</button>
+              <button type="button" class="order-btn" disabled={i === 0} onclick={() => moveFile(i, -1)} aria-label={$_("videoMerge.moveUp")}>↑</button>
+              <button type="button" class="order-btn" disabled={i === files.length - 1} onclick={() => moveFile(i, 1)} aria-label={$_("videoMerge.moveDown")}>↓</button>
+              <button type="button" class="remove-btn" onclick={() => removeFile(i)} aria-label={$_("common.remove")}>✕</button>
             </div>
           </li>
         {/each}
@@ -173,14 +182,13 @@
 
   <section class="card info-card">
     <p class="info-text">
-      ℹ️ Video birleştirme <strong>stream copy</strong> modunda çalışır — yeniden kodlama yapılmaz, çok hızlıdır.
-      Tüm dosyaların aynı codec (ör. H.264) ve ses formatında olması gerekir.
+      {$_("videoMerge.info")}
     </p>
   </section>
 
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
 
     {#if outputPath && !busy}
@@ -188,7 +196,7 @@
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
-      >Dizinde Göster</button>
+      >{$_("common.showInDir")}</button>
     {/if}
 
     {#if busy}
@@ -196,12 +204,12 @@
         <div class="progress-bar">
           <div class="progress-fill" style="width:{progress ?? 0}%" class:indeterminate={progress == null}></div>
         </div>
-        <span class="progress-label">{progress != null ? `%${Math.round(progress)}` : "İşleniyor…"}</span>
+        <span class="progress-label">{progress != null ? `%${Math.round(progress)}` : $_("common.processing")}</span>
       </div>
-      <button type="button" class="btn btn-danger" onclick={cancel}>İptal</button>
+      <button type="button" class="btn btn-danger" onclick={cancel}>{$_("common.cancel")}</button>
     {:else}
       <button type="button" class="btn btn-primary" disabled={!canStart} onclick={startMerge}>
-        {files.length < 2 ? "En az 2 video ekle" : "Birleştirmeyi Başlat"}
+        {files.length < 2 ? $_("videoMerge.needTwo") : $_("videoMerge.start")}
       </button>
     {/if}
   </section>

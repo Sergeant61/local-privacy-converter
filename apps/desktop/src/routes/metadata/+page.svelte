@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
 
   const MEDIA_EXTS = new Set(["mp4","m4v","mkv","webm","avi","mov","wmv","ts","mp3","wav","m4a","flac","opus","aac","ogg"]);
 
@@ -12,13 +14,13 @@
 
   let loading = $state(false);
 
-  const TAG_FIELDS: { key: string; label: string; placeholder: string }[] = [
-    { key: "title",   label: "Başlık",    placeholder: "Film / parça adı" },
-    { key: "artist",  label: "Sanatçı",   placeholder: "Sanatçı veya yönetmen" },
-    { key: "album",   label: "Albüm",     placeholder: "Albüm veya koleksiyon" },
-    { key: "date",    label: "Yıl",       placeholder: "2024" },
-    { key: "genre",   label: "Tür",       placeholder: "Pop, Rock, Belgesel…" },
-    { key: "comment", label: "Yorum",     placeholder: "Ek açıklama" },
+  const TAG_FIELDS: { key: string; labelKey: string; placeholderKey: string }[] = [
+    { key: "title",   labelKey: "metadata.fTitle",   placeholderKey: "metadata.fTitlePh" },
+    { key: "artist",  labelKey: "metadata.fArtist",  placeholderKey: "metadata.fArtistPh" },
+    { key: "album",   labelKey: "metadata.fAlbum",   placeholderKey: "metadata.fAlbumPh" },
+    { key: "date",    labelKey: "metadata.fDate",    placeholderKey: "metadata.fDatePh" },
+    { key: "genre",   labelKey: "metadata.fGenre",   placeholderKey: "metadata.fGenrePh" },
+    { key: "comment", labelKey: "metadata.fComment", placeholderKey: "metadata.fCommentPh" },
   ];
 
   let tags = $state<Record<string, string>>({
@@ -27,6 +29,9 @@
 
   let busy = $state(false);
   let toast = $state<string | null>(null);
+  // Hata biçimi metnin içeriğinden değil bayraktan geliyor: eski
+  // `toast.startsWith("Hata")` denetimi yalnızca Türkçede tutuyordu.
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -38,7 +43,7 @@
     toast = null;
     outputPath = null;
     if (!MEDIA_EXTS.has(extOf(label))) {
-      fileError = "Video veya ses dosyası seçin.";
+      fileError = get(_)("metadata.avOnly");
       return;
     }
     filePath = path;
@@ -72,7 +77,7 @@
     const file = e.dataTransfer?.files.item(0);
     if (!file) return;
     try { void loadFile(window.lfc.getPathForFile(file), file.name); }
-    catch { fileError = "Dosya yolu alınamadı."; }
+    catch { fileError = get(_)("common.pathFailed"); }
   }
 
   const canSave = $derived(Boolean(hasLfc && filePath && fileLabel && !busy && !loading));
@@ -81,7 +86,8 @@
     if (!hasLfc || !filePath || !fileLabel) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const dot = fileLabel.lastIndexOf(".");
@@ -103,28 +109,30 @@
 
     if (r.ok) {
       outputPath = out;
-      toast = `Metadata kaydedildi: ${out.split(/[/\\]/).pop()}`;
+      toast = get(_)("metadata.saved", { values: { file: out.split(/[/\\]/).pop() } });
+      toastError = false;
     } else if (r.ok === false) {
-      toast = `Hata: ${r.message}`;
+      toast = get(_)("common.errorWith", { values: { message: r.message } });
+      toastError = true;
     }
   }
 </script>
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Metadata Düzenleyici</h1>
-    <p class="page-sub">Video veya ses dosyasının başlık, sanatçı, yıl gibi etiketlerini düzenle.</p>
+    <h1 class="page-title">{$_("metadata.pageTitle")}</h1>
+    <p class="page-sub">{$_("metadata.pageSubtitle")}</p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Dosya</h2>
+    <h2 class="card-title">{$_("metadata.file")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Medya dosyası seç"
+      aria-label={$_("metadata.pickMedia")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -135,12 +143,12 @@
         <div class="file-info">
           <span class="file-icon" aria-hidden="true">📄</span>
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">🏷️</span>
-          <span>Video veya ses dosyası seç (tıkla veya sürükle)</span>
+          <span>{$_("metadata.pickMediaHint")}</span>
         </div>
       {/if}
     </div>
@@ -148,40 +156,40 @@
       <p class="error-msg" role="alert">{fileError}</p>
     {/if}
     {#if loading}
-      <p class="loading-msg">Etiketler okunuyor…</p>
+      <p class="loading-msg">{$_("metadata.readingTags")}</p>
     {/if}
   </section>
 
   {#if filePath && !loading}
     <section class="card">
-      <h2 class="card-title">Etiketler</h2>
+      <h2 class="card-title">{$_("metadata.tags")}</h2>
       <div class="tags-grid">
         {#each TAG_FIELDS as field (field.key)}
           <label class="field-block">
-            <span class="field-label">{field.label}</span>
+            <span class="field-label">{$_(field.labelKey)}</span>
             <input
               type="text"
               bind:value={tags[field.key]}
-              placeholder={field.placeholder}
+              placeholder={$_(field.placeholderKey)}
               class="text-input"
             />
           </label>
         {/each}
       </div>
-      <p class="info-note">Boş bırakılan alanlar mevcut değerleriyle korunur. Çıktı dosyası orijinal ile aynı formatta kaydedilir (<code>-c copy</code>).</p>
+      <p class="info-note">{$_("metadata.infoNote")}</p>
     </section>
   {/if}
 
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
     {#if outputPath && !busy}
       <button
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
-      >Dizinde Göster</button>
+      >{$_("metadata.showInDir")}</button>
     {/if}
     <button
       type="button"
@@ -189,7 +197,7 @@
       disabled={!canSave}
       onclick={save}
     >
-      {#if busy}Kaydediliyor…{:else if !filePath}Önce Dosya Seç{:else}Kaydet{/if}
+      {#if busy}{$_("metadata.writing")}{:else if !filePath}{$_("common.selectFileFirst")}{:else}{$_("metadata.write")}{/if}
     </button>
   </section>
 </div>
@@ -218,7 +226,6 @@
   .text-input { padding: 0.45rem 0.65rem; border: 1px solid var(--border); border-radius: var(--radius-button); background: var(--surface-elevated); color: var(--text); font: inherit; font-size: 0.9rem; width: 100%; }
   .text-input:focus { outline: none; border-color: var(--accent-start); }
   .info-note { font-size: 0.8rem; color: var(--muted); margin: 0; padding: 0.5rem 0.75rem; background: var(--surface-elevated); border-radius: 8px; border: 1px solid var(--border); }
-  .info-note code { font-family: monospace; font-size: 0.85em; background: var(--surface); padding: 0.1rem 0.3rem; border-radius: 4px; border: 1px solid var(--border); }
   .action-card { gap: 0.75rem; }
   .toast { margin: 0; padding: 0.55rem 0.85rem; border-radius: 8px; font-size: 0.87rem; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25); color: var(--success); }
   .toast.toast-error { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2); color: var(--danger); }

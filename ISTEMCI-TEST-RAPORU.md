@@ -16,13 +16,14 @@ ikilisiyle yerel üretildi (`~/Documents/lpc-test-medya/`, 14 dosya + 1 kasten b
 | Test edilen ekran | 17 |
 | Üretilen ve diskte doğrulanan çıktı | 20 |
 | Bulunan hata | 7 (1 kritik, 2 yüksek, 4 orta/düşük) |
-| Düzeltilen | 3 — H-01, H-02, H-08 |
+| Düzeltilen | 6 — H-01, H-02, H-03, H-08, H-09, H-10 |
 
 **Kritik:** Dönüştür ekranı, Mac'te seçilen hedef kodeği yok sayıyor — H.265 isteyince
 H.264 üretiyor, WebM isteyince hiç üretmiyor. **Düzeltildi** (H-01).
 
-**Durum:** H-01 · H-02 · H-08 kapatıldı, her biri birim testleriyle sabitlendi
-(aşağıda "Ne yapıldı / Nasıl ölçüldü"). H-03 – H-07 açık.
+**Durum:** H-01 · H-02 · H-03 · H-08 · H-09 · H-10 kapatıldı, her biri birim
+testleriyle sabitlendi (aşağıda "Ne yapıldı / Nasıl ölçüldü"; H-09 ve H-10 arayüz
+testi sırasında bulunup aynı turda kapatıldı). H-04 – H-07 açık.
 
 ---
 
@@ -157,7 +158,7 @@ bekliyor**.
 
 ---
 
-### H-03 · YÜKSEK · Arayüz İngilizce çalışmıyor (i18n yarım bağlı)
+### H-03 · YÜKSEK · Arayüz İngilizce çalışmıyor (i18n yarım bağlı) — DÜZELTİLDİ
 
 `tr.json` ve `en.json` 21 üst düzey anahtarla **tam çevrili**, ama `$_()` çağrısı
 yalnızca `settings/+page.svelte` içinde var (36 çağrı). Diğer 15 sayfa sabit Türkçe.
@@ -165,6 +166,52 @@ yalnızca `settings/+page.svelte` içinde var (36 çağrı). Diğer 15 sayfa sab
 **Nasıl ölçüldü:** Dil İngilizce yapıldı → kenar çubuğu İngilizceye döndü,
 "Create GIF"e tıklandı → açılan sayfanın başlığı "GIF Oluştur", gövdesi baştan sona
 Türkçe. İngilizce mod pratikte kullanılamaz durumda.
+
+#### Ne yapıldı
+
+**1. Kalan 15 sayfa ve iki bileşen `$_()`'ye bağlandı.** frames, gif, apng, pdf,
+metadata, normalize, trim, video-merge, audio-merge, batch, multi-output, watermark,
+aspect-ratio, resolution, subtitle sayfaları ile `HomeConverter.svelte` (1813 satır,
+en büyük dosya) ve `AppShell.svelte`. Betik içindeki metinler `get(_)("...")`,
+işaretlemedekiler `$_("...")` ile alınıyor. Sözlük 662 anahtara çıktı (21 → 22 grup;
+kodlayıcı etiketleri için `encoders` grubu eklendi).
+
+**2. Hata rengi dile bağlı olmaktan çıktı.** Sayfalar `toast.startsWith("Hata")` ile
+kırmızı bildirim ayırt ediyordu — İngilizcede metin "Error…" olduğu için bu koşul hiç
+tutmuyor, hata bildirimi yeşil görünüyordu. Her sayfaya açık bir `toastError` bayrağı
+kondu.
+
+**3. Katalog etiketleri iki dilli yapıldı.** `TargetProfile` yalnızca `labelTr` /
+`descriptionTr`, `SocialMeta` yalnızca `infoTr` taşıyordu; hedef format açılır listesi
+bu yüzden İngilizceye çevrilemiyordu. 32 profilin tamamına `labelEn` / `descriptionEn`,
+17 sosyal presete `infoEn` eklendi. `platformLabelTr` → `platformLabel` olarak
+adlandırıldı: değerleri marka adı (WhatsApp Business, TikTok…), iki dilde de aynı.
+Dile göre alan seçimi tek yerde: [profile-text.ts](apps/desktop/src/lib/profile-text.ts).
+
+**4. Çoğul ve yer tutucular ICU'ya taşındı.** "1 format selected / 2 formats selected"
+gibi durumlar düz birleştirme yerine `{count, plural, …}` ile kuruluyor.
+
+#### Nasıl ölçüldü
+
+`typecheck 6/6 · lint 0 hata / 0 uyarı · 344 test (275 → +69) · build temiz`
+
+Yeni testler:
+
+| Test | Neyi sabitliyor |
+|---|---|
+| [messages.test.ts](apps/desktop/src/lib/i18n/messages.test.ts) — 4 test | tr/en aynı anahtar kümesi (662 = 662), boş değer yok, İngilizce metinlerde Türkçe karakter yok, aynı anahtarın yer tutucuları iki dilde eşit |
+| [target-profiles.test.ts](packages/media-formats/src/target-profiles.test.ts) — 65 test | 32 profilin dört etiket alanı da dolu; İngilizce alanlarda Türkçe karakter yok; sosyal presetlerde `infoEn` dolu |
+
+Ekrandan doğrulama (dev sunucusu, dil İngilizce): 18 rotanın tamamı gezilip
+`.content` gövdesi ve `title` / `aria-label` / `placeholder` / `alt` öznitelikleri
+Türkçe karakter için tarandı — **18/18 temiz**. Dil anahtarı canlı denendi: Ayarlar
+sayfasında Türkçe seçilince başlık sayfa yenilemeden "Settings" → "Ayarlar" oldu,
+yani `$locale`'e bağlı etiketler tepkili.
+
+Kaynakta kalan Türkçe: yalnızca kod yorumları ve `LOCALE_LABELS`'taki "Türkçe" (dilin
+kendi adı). Sözlükte, sayfalar bağlanmadan önce spekülatif yazılmış ~155 anahtar
+referanssız duruyor; iki dilde de simetrik oldukları için zarar vermiyorlar,
+temizlikleri ayrı bir iş.
 
 ---
 

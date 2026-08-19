@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
 
   const VIDEO_EXTS = new Set(["mp4","m4v","mkv","webm","avi","mov","wmv","flv","ogv","mpg","mpeg","ts","m2ts","mts","3gp","3g2","asf","divx","vob","f4v","dv"]);
 
@@ -15,16 +17,19 @@
   let loop = $state(0);
 
   const WIDTH_PRESETS = [
-    { value: 240,  label: "240px — Küçük" },
-    { value: 320,  label: "320px — Kompakt" },
-    { value: 480,  label: "480px — Standart" },
-    { value: 640,  label: "640px — Geniş" },
-    { value: 800,  label: "800px — Büyük" },
+    { value: 240, key: "gif.w240" },
+    { value: 320, key: "gif.w320" },
+    { value: 480, key: "gif.w480" },
+    { value: 640, key: "gif.w640" },
+    { value: 800, key: "gif.w800" },
   ];
 
   let busy = $state(false);
   let progress = $state<number | null>(null);
   let toast = $state<string | null>(null);
+  // Hata biçimi metnin içeriğinden değil bayraktan geliyor: eski
+  // `toast.startsWith("Hata")` denetimi yalnızca Türkçede tutuyordu.
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -34,7 +39,7 @@
   async function loadFile(path: string, label: string) {
     fileError = null;
     if (!VIDEO_EXTS.has(extOf(label))) {
-      fileError = "Yalnızca video dosyaları desteklenir.";
+      fileError = get(_)("common.videoOnly");
       return;
     }
     filePath = path;
@@ -58,7 +63,7 @@
     try {
       void loadFile(window.lfc.getPathForFile(file), file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
   }
 
@@ -66,7 +71,8 @@
     if (!hasLfc || !filePath || !fileLabel) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const dot = fileLabel.lastIndexOf(".");
@@ -86,10 +92,12 @@
 
     if (r.ok) {
       outputPath = outPath;
-      toast = "GIF oluşturuldu!";
+      toast = get(_)("gif.done");
+      toastError = false;
     } else {
-      const msg = r.ok === false ? (r.message ?? "Hata") : "Hata";
-      toast = `Hata: ${msg}`;
+      const msg = r.ok === false ? (r.message ?? "") : "";
+      toast = get(_)("common.errorWith", { values: { message: msg || get(_)("common.error") } });
+      toastError = true;
     }
   }
 
@@ -97,31 +105,38 @@
     if (hasLfc) await window.lfc.cancelConvert();
     busy = false;
     progress = null;
-    toast = "İptal edildi.";
+    toast = get(_)("common.canceled");
+    toastError = false;
   }
 
   const canStart = $derived(Boolean(filePath && !busy && hasLfc));
 
   const estimatedSizeNote = $derived(
-    `${fps} fps · ${gifWidth}px genişlik · ${loop === 0 ? "sonsuz döngü" : "bir kez oynat"}`
+    $_("gif.note", {
+      values: {
+        fps,
+        width: gifWidth,
+        loop: $_(loop === 0 ? "gif.loopInfiniteShort" : "gif.loopOnceShort")
+      }
+    })
   );
 </script>
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">GIF Oluştur</h1>
-    <p class="page-sub">Videodan yüksek kaliteli GIF üretir. Renk paletini otomatik hesaplar (<code>palettegen</code> + <code>paletteuse</code>), düşük bant genişliği için FPS ve boyut ayarlanabilir.</p>
+    <h1 class="page-title">{$_("gif.title")}</h1>
+    <p class="page-sub">{$_("gif.subtitle")}</p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Video Dosyası</h2>
+    <h2 class="card-title">{$_("gif.inputFile")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Video dosyası seç"
+      aria-label={$_("common.pickVideo")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -132,13 +147,13 @@
         <div class="file-info">
           <span class="file-icon" aria-hidden="true">🎬</span>
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">🎞️</span>
-          <span>Video dosyası seç (tıkla veya sürükle)</span>
-          <span class="drop-sub">MP4, MKV, MOV, AVI ve daha fazlası</span>
+          <span>{$_("common.pickVideoHint")}</span>
+          <span class="drop-sub">{$_("common.videoExts")}</span>
         </div>
       {/if}
     </div>
@@ -148,10 +163,10 @@
   </section>
 
   <section class="card">
-    <h2 class="card-title">GIF Ayarları</h2>
+    <h2 class="card-title">{$_("gif.settings")}</h2>
 
     <div class="setting-row">
-      <label for="fps" class="field-label">Saniye başına kare (FPS)</label>
+      <label for="fps" class="field-label">{$_("gif.fpsLabel")}</label>
       <input
         id="fps"
         type="number"
@@ -165,7 +180,7 @@
     </div>
 
     <div class="setting-row">
-      <span class="field-label">Genişlik</span>
+      <span class="field-label">{$_("gif.widthLabel")}</span>
       <div class="preset-group">
         {#each WIDTH_PRESETS as p (p.value)}
           <button
@@ -173,13 +188,13 @@
             class="preset-btn"
             class:active={gifWidth === p.value}
             onclick={() => (gifWidth = p.value)}
-          >{p.label}</button>
+          >{$_(p.key)}</button>
         {/each}
       </div>
     </div>
 
     <div class="setting-row">
-      <span class="field-label">Döngü</span>
+      <span class="field-label">{$_("gif.loop")}</span>
       <div class="format-pair">
         <button
           type="button"
@@ -187,8 +202,8 @@
           class:active={loop === 0}
           onclick={() => (loop = 0)}
         >
-          <strong>Sonsuz</strong>
-          <small>Tekrar tekrar oynat</small>
+          <strong>{$_("gif.infinite")}</strong>
+          <small>{$_("gif.infiniteDesc")}</small>
         </button>
         <button
           type="button"
@@ -196,8 +211,8 @@
           class:active={loop === 1}
           onclick={() => (loop = 1)}
         >
-          <strong>Bir kez</strong>
-          <small>Bir kere oynat, dur</small>
+          <strong>{$_("gif.once")}</strong>
+          <small>{$_("gif.onceDesc")}</small>
         </button>
       </div>
     </div>
@@ -205,13 +220,13 @@
     <div class="info-box">
       {estimatedSizeNote}
       <br/>
-      <small>Not: GIF formatı 256 renk ile sınırlıdır. Renk yoğun videolar için WebM veya MP4 tercih edin.</small>
+      <small>{$_("gif.colorNote")}</small>
     </div>
   </section>
 
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
 
     {#if outputPath && !busy}
@@ -219,7 +234,7 @@
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
-      >Klasörü Aç</button>
+      >{$_("common.openFolder")}</button>
     {/if}
 
     {#if busy}
@@ -227,12 +242,12 @@
         <div class="progress-bar">
           <div class="progress-fill" style="width:{progress ?? 0}%" class:indeterminate={progress == null}></div>
         </div>
-        <span class="progress-label">{progress != null ? `%${Math.round(progress)}` : "İşleniyor…"}</span>
+        <span class="progress-label">{progress != null ? `%${Math.round(progress)}` : $_("common.processing")}</span>
       </div>
-      <button type="button" class="btn btn-danger" onclick={cancel}>İptal</button>
+      <button type="button" class="btn btn-danger" onclick={cancel}>{$_("common.cancel")}</button>
     {:else}
       <button type="button" class="btn btn-primary" disabled={!canStart} onclick={startConvert}>
-        {filePath ? "GIF Oluştur" : "Önce Video Seç"}
+        {filePath ? $_("gif.convert") : $_("common.selectVideoFirst")}
       </button>
     {/if}
   </section>

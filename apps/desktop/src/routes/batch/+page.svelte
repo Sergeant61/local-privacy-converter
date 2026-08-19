@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
   import type { ConvertJobSpec } from "@lfc/types";
   import {
     isKnownInputExtension,
@@ -36,26 +38,26 @@
   let cancelled = $state(false);
 
   const OUTPUT_FORMATS: { id: TargetProfileId; label: string; group: string }[] = [
-    { id: "mp4-h264-aac",   label: "MP4 (H.264 + AAC)",   group: "Video" },
-    { id: "webm-vp9-opus",  label: "WebM (VP9 + Opus)",    group: "Video" },
-    { id: "mkv-h264-aac",   label: "MKV (H.264 + AAC)",   group: "Video" },
-    { id: "remux-copy",     label: "Remux (stream copy)",  group: "Video" },
-    { id: "audio-mp3",      label: "MP3",                  group: "Ses" },
-    { id: "audio-wav",      label: "WAV",                  group: "Ses" },
-    { id: "audio-m4a-aac",  label: "M4A (AAC)",            group: "Ses" },
-    { id: "audio-flac",     label: "FLAC",                 group: "Ses" },
-    { id: "audio-opus",     label: "Opus",                 group: "Ses" },
-    { id: "image-png",      label: "PNG",                  group: "Görüntü" },
-    { id: "image-jpeg",     label: "JPEG",                 group: "Görüntü" },
-    { id: "image-webp",     label: "WebP",                 group: "Görüntü" },
+    { id: "mp4-h264-aac",   label: "MP4 (H.264 + AAC)",   group: "common.groupVideo" },
+    { id: "webm-vp9-opus",  label: "WebM (VP9 + Opus)",    group: "common.groupVideo" },
+    { id: "mkv-h264-aac",   label: "MKV (H.264 + AAC)",   group: "common.groupVideo" },
+    { id: "remux-copy",     label: "Remux (stream copy)",  group: "common.groupVideo" },
+    { id: "audio-mp3",      label: "MP3",                  group: "common.groupAudio" },
+    { id: "audio-wav",      label: "WAV",                  group: "common.groupAudio" },
+    { id: "audio-m4a-aac",  label: "M4A (AAC)",            group: "common.groupAudio" },
+    { id: "audio-flac",     label: "FLAC",                 group: "common.groupAudio" },
+    { id: "audio-opus",     label: "Opus",                 group: "common.groupAudio" },
+    { id: "image-png",      label: "PNG",                  group: "common.groupImage" },
+    { id: "image-jpeg",     label: "JPEG",                 group: "common.groupImage" },
+    { id: "image-webp",     label: "WebP",                 group: "common.groupImage" },
   ];
 
   const QUALITY_OPTIONS = [
-    { value: "high" as const,       label: "Yüksek (CRF 18)" },
-    { value: "compatible" as const, label: "Uyumlu (CRF 20)" },
-    { value: "balanced" as const,   label: "Dengeli (CRF 23)" },
-    { value: "small" as const,      label: "Küçük (CRF 28)" },
-    { value: "very_small" as const, label: "Çok küçük (CRF 35)" },
+    { value: "high" as const,       key: "quality.highShort" },
+    { value: "compatible" as const, key: "quality.compatibleShort" },
+    { value: "balanced" as const,   key: "quality.balancedShort" },
+    { value: "small" as const,      key: "quality.smallShort" },
+    { value: "very_small" as const, key: "quality.verySmallShort" },
   ];
 
   function extOf(name: string): string {
@@ -66,7 +68,7 @@
     fileError = null;
     const ext = normalizeExtension(label);
     if (!isKnownInputExtension(ext)) {
-      fileError = `"${label}" desteklenmiyor. Bilinen bir medya dosyası seçin.`;
+      fileError = get(_)("batch.unsupported", { values: { name: label } });
       return;
     }
     if (files.find((f) => f.path === path)) return;
@@ -145,7 +147,7 @@
       try {
         addFile(window.lfc.getPathForFile(file), file.name);
       } catch {
-        fileError = "Dosya yolu alınamadı.";
+        fileError = get(_)("common.pathFailed");
       }
     }
   }
@@ -166,7 +168,7 @@
 
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      fileError = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      fileError = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
       return;
     }
 
@@ -215,7 +217,8 @@
           status: "success"
         });
       } else {
-        const msg = r.ok === false ? (r.message ?? "Hata") : "Hata";
+        const fallback = get(_)("common.error");
+        const msg = r.ok === false ? (r.message ?? fallback) : fallback;
         files = files.map((x) =>
           x.id === f.id ? { ...x, status: cancelled ? "skipped" : "error", errorMessage: msg } : x
         );
@@ -263,19 +266,19 @@
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Toplu Dönüştürme</h1>
-    <p class="page-sub">Birden fazla dosyayı aynı ayarlarla sırayla dönüştürür. Her dosya ayrı izlenir; hata olsa da sıradaki dosyaya devam eder.</p>
+    <h1 class="page-title">{$_("batch.title")}</h1>
+    <p class="page-sub">{$_("batch.pageSubtitle")}</p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Dosyalar ({files.length} dosya{files.length !== 1 ? "" : ""})</h2>
+    <h2 class="card-title">{$_("batch.filesTitle", { values: { count: files.length } })}</h2>
 
     <div
       class="drop-zone"
       class:drag={isDragging}
       role="button"
       tabindex="0"
-      aria-label="Dosya ekle"
+      aria-label={$_("batch.addFiles")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -283,8 +286,8 @@
       onkeydown={(e) => e.key === "Enter" && onPick()}
     >
       <span class="drop-icon" aria-hidden="true">📂</span>
-      <span>Dosya ekle (tıkla veya sürükle)</span>
-      <span class="drop-sub">Video, ses ve görüntü dosyaları — birden fazla seçebilirsiniz</span>
+      <span>{$_("batch.addHint")}</span>
+      <span class="drop-sub">{$_("batch.addSub")}</span>
     </div>
 
     {#if fileError}
@@ -305,7 +308,7 @@
             ondragend={onItemDragEnd}
           >
             <div class="file-row">
-              <span class="drag-handle" aria-hidden="true" title="Sürükle">⠿</span>
+              <span class="drag-handle" aria-hidden="true" title={$_("batch.dragHandle")}>⠿</span>
               <span class="file-idx-icon" aria-hidden="true">
                 {#if f.status === "pending"}⏳{:else if f.status === "converting"}⚙️{:else if f.status === "done"}✅{:else if f.status === "error"}❌{:else}⏭️{/if}
               </span>
@@ -316,15 +319,15 @@
                     type="button"
                     class="file-action-btn"
                     onclick={() => window.lfc.showInFolder(f.outputPath!)}
-                    title="Dizinde göster"
-                  >Göster</button>
+                    title={$_("batch.showInFolder")}
+                  >{$_("batch.showBtn")}</button>
                 {/if}
                 {#if f.status === "pending"}
                   <button
                     type="button"
                     class="file-remove-btn"
                     onclick={() => removeFile(f.id)}
-                    aria-label="Kaldır"
+                    aria-label={$_("common.remove")}
                     disabled={busy}
                   >✕</button>
                 {/if}
@@ -339,7 +342,7 @@
                     class:indeterminate={f.progress == null}
                   ></div>
                 </div>
-                <span class="progress-label">{f.progress != null ? `%${Math.round(f.progress)}` : "İşleniyor…"}</span>
+                <span class="progress-label">{f.progress != null ? `%${Math.round(f.progress)}` : $_("common.processing")}</span>
               </div>
             {/if}
             {#if f.status === "error" && f.errorMessage}
@@ -351,20 +354,20 @@
 
       {#if doneCount > 0 || errorCount > 0}
         <button type="button" class="clear-btn" onclick={clearDone} disabled={busy}>
-          Tamamlananları temizle
+          {$_("batch.clearDone")}
         </button>
       {/if}
     {/if}
   </section>
 
   <section class="card">
-    <h2 class="card-title">Çıktı Ayarları</h2>
+    <h2 class="card-title">{$_("batch.outputSettings")}</h2>
 
     <div class="setting-row">
-      <label for="format" class="field-label">Hedef Format</label>
+      <label for="format" class="field-label">{$_("batch.targetFormat")}</label>
       <select id="format" class="select" bind:value={targetProfileId} disabled={busy}>
         {#each groupedFormats as grp (grp.group)}
-          <optgroup label={grp.group}>
+          <optgroup label={$_(grp.group)}>
             {#each grp.items as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
@@ -374,10 +377,10 @@
     </div>
 
     <div class="setting-row">
-      <label for="quality" class="field-label">Kalite</label>
+      <label for="quality" class="field-label">{$_("batch.quality")}</label>
       <select id="quality" class="select" bind:value={qualityPreset} disabled={busy}>
         {#each QUALITY_OPTIONS as opt (opt.value)}
-          <option value={opt.value}>{opt.label}</option>
+          <option value={opt.value}>{$_(opt.key)}</option>
         {/each}
       </select>
     </div>
@@ -386,19 +389,19 @@
   <section class="card action-card">
     {#if busy}
       <p class="status-msg">
-        İşleniyor — {doneCount} tamamlandı, {errorCount} hata, {pendingCount} bekliyor…
+        {$_("batch.running", { values: { done: doneCount, error: errorCount, pending: pendingCount } })}
       </p>
     {:else if !busy && files.length > 0 && pendingCount === 0}
       <p class="status-msg status-done">
-        Tüm dosyalar işlendi — {doneCount} başarılı{errorCount > 0 ? `, ${errorCount} hatalı` : ""}.
+        {$_("batch.allDone", { values: { done: doneCount, errorSuffix: errorCount > 0 ? $_("batch.errorSuffix", { values: { error: errorCount } }) : "" } })}
       </p>
     {/if}
 
     {#if busy}
-      <button type="button" class="btn btn-danger" onclick={cancelBatch}>İptal</button>
+      <button type="button" class="btn btn-danger" onclick={cancelBatch}>{$_("common.cancel")}</button>
     {:else}
       <button type="button" class="btn btn-primary" disabled={!canStart} onclick={startBatch}>
-        {pendingCount > 0 ? `${pendingCount} Dosyayı Dönüştür` : "Dosya Ekle"}
+        {pendingCount > 0 ? $_("batch.convertN", { values: { count: pendingCount } }) : $_("batch.addFiles")}
       </button>
     {/if}
   </section>

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
   import { onMount } from "svelte";
   import { recordConversion } from "$lib/history/store";
   import { normalizeExtension } from "@lfc/media-formats";
@@ -7,13 +9,14 @@
 
   type AspectRatioPreset = "16:9" | "9:16" | "1:1" | "4:3" | "21:9" | "custom";
 
-  const RATIO_OPTIONS: { value: AspectRatioPreset; label: string; desc: string }[] = [
-    { value: "16:9",  label: "16:9",  desc: "Yatay — TV / monitör / YouTube" },
-    { value: "9:16",  label: "9:16",  desc: "Dikey — Stories / Reels / TikTok" },
-    { value: "1:1",   label: "1:1",   desc: "Kare — Instagram feed" },
-    { value: "4:3",   label: "4:3",   desc: "Klasik TV / fotoğraf" },
-    { value: "21:9",  label: "21:9",  desc: "Sinematik — ultra-geniş" },
-    { value: "custom",label: "Özel",  desc: "Kendi oranını gir (ör. 3:2)" },
+  const RATIO_OPTIONS: { value: AspectRatioPreset; label: string | null; descKey: string }[] = [
+    { value: "16:9",  label: "16:9", descKey: "aspectRatio.desc169" },
+    { value: "9:16",  label: "9:16", descKey: "aspectRatio.desc916" },
+    { value: "1:1",   label: "1:1",  descKey: "aspectRatio.desc11" },
+    { value: "4:3",   label: "4:3",  descKey: "aspectRatio.desc43" },
+    { value: "21:9",  label: "21:9", descKey: "aspectRatio.desc219" },
+    // Etiketi çevrilen tek seçenek: diğerleri sayısal oran.
+    { value: "custom",label: null,   descKey: "aspectRatio.descCustom" },
   ];
 
   // Supported: video + image (audio has no aspect ratio)
@@ -35,6 +38,7 @@
   let busy = $state(false);
   let progress = $state<number | null>(null);
   let toast = $state<string | null>(null);
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
   let outputPreviewUrl = $state<string | null>(null);
 
@@ -56,7 +60,7 @@
     toast = null;
     const kind = getFileType(label);
     if (!kind) {
-      fileError = "Desteklenmeyen dosya türü. Yalnızca video ve görüntü dosyaları kabul edilir.";
+      fileError = get(_)("aspectRatio.unsupported");
       return;
     }
     filePath = path;
@@ -87,7 +91,7 @@
       const path = window.lfc.getPathForFile(file);
       void loadFile(path, file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
   }
 
@@ -99,7 +103,7 @@
       const path = window.lfc.getPathForFile(file);
       void loadFile(path, file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
     input.value = "";
   }
@@ -119,13 +123,15 @@
     if (!hasLfc || !filePath || !fileLabel) return;
     const ratio = effectiveRatio();
     if (!/^\d+:\d+$/.test(ratio)) {
-      toast = "Geçersiz oran formatı. Örnek: 16:9";
+      toast = get(_)("aspectRatio.invalidRatio");
+      toastError = true;
       return;
     }
     const ext = normalizeExtension(fileLabel);
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const filename = suggestOutputName(fileLabel, ext);
@@ -141,6 +147,7 @@
     busy = true;
     progress = null;
     toast = null;
+    toastError = false;
     outputPath = null;
     outputPreviewUrl = null;
 
@@ -170,7 +177,7 @@
 
     if (r.ok) {
       outputPath = outPath;
-      toast = "Kırpma tamamlandı!";
+      toast = get(_)("aspectRatio.done");
       await recordConversion({
         inputFilename: fileLabel,
         inputExt,
@@ -186,8 +193,10 @@
         if (prev.ok) outputPreviewUrl = prev.dataUrl;
       }
     } else {
-      const errMsg = r.ok === false ? (r.message ?? "Bilinmeyen hata") : "Bilinmeyen hata";
-      toast = `Hata: ${errMsg}`;
+      const unknown = get(_)("common.unknownError");
+      const errMsg = r.ok === false ? (r.message ?? unknown) : unknown;
+      toast = get(_)("common.errorWith", { values: { message: errMsg } });
+      toastError = true;
       await recordConversion({
         inputFilename: fileLabel,
         inputExt,
@@ -206,7 +215,8 @@
     if (hasLfc) await window.lfc.cancelConvert();
     busy = false;
     progress = null;
-    toast = "İptal edildi.";
+    toast = get(_)("common.canceled");
+    toastError = false;
   }
 
   const canStart = $derived(Boolean(filePath && !busy && hasLfc));
@@ -225,20 +235,20 @@
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">En-Boy Oranı Kırpma</h1>
-    <p class="page-sub">Videoyu veya görüntüyü seçilen orana göre merkezi olarak kırpar. Yeniden kodlama kaliteyi korur.</p>
+    <h1 class="page-title">{$_("aspectRatio.title")}</h1>
+    <p class="page-sub">{$_("aspectRatio.subtitle")}</p>
   </header>
 
   <!-- Dosya Seçici -->
   <section class="card">
-    <h2 class="card-title">Dosya Seç</h2>
+    <h2 class="card-title">{$_("aspectRatio.inputFile")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Dosya seçmek için tıkla veya sürükle bırak"
+      aria-label={$_("common.pickFileHint")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -248,18 +258,18 @@
       {#if filePath}
         <div class="file-info">
           {#if inputPreviewUrl}
-            <img class="preview-thumb" src={inputPreviewUrl} alt="Önizleme" />
+            <img class="preview-thumb" src={inputPreviewUrl} alt={$_("common.preview")} />
           {:else}
             <span class="file-icon" aria-hidden="true">🎬</span>
           {/if}
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">📂</span>
-          <span>Video veya görüntü dosyasını sürükle ya da tıkla</span>
-          <span class="drop-sub">MP4, MKV, MOV, PNG, JPG, WebP ve daha fazlası</span>
+          <span>{$_("aspectRatio.pickHint")}</span>
+          <span class="drop-sub">{$_("aspectRatio.pickSub")}</span>
         </div>
       {/if}
     </div>
@@ -278,7 +288,7 @@
 
   <!-- Oran Seçici -->
   <section class="card">
-    <h2 class="card-title">Hedef En-Boy Oranı</h2>
+    <h2 class="card-title">{$_("aspectRatio.ratio")}</h2>
     <div class="ratio-grid">
       {#each RATIO_OPTIONS as opt (opt.value)}
         <button
@@ -287,20 +297,20 @@
           class:active={selectedRatio === opt.value}
           onclick={() => (selectedRatio = opt.value)}
         >
-          <span class="ratio-label">{opt.label}</span>
-          <span class="ratio-desc">{opt.desc}</span>
+          <span class="ratio-label">{opt.label ?? $_("common.custom")}</span>
+          <span class="ratio-desc">{$_(opt.descKey)}</span>
         </button>
       {/each}
     </div>
 
     {#if selectedRatio === "custom"}
       <div class="custom-ratio-row">
-        <label for="custom-ratio" class="field-label">Özel oran (G:Y)</label>
+        <label for="custom-ratio" class="field-label">{$_("aspectRatio.customRatio")}</label>
         <input
           id="custom-ratio"
           class="text-input"
           type="text"
-          placeholder="ör. 3:2"
+          placeholder={$_("aspectRatio.customPlaceholder")}
           bind:value={customRatio}
         />
       </div>
@@ -321,9 +331,9 @@
   <!-- Çıktı Önizleme -->
   {#if outputPreviewUrl}
     <section class="card">
-      <h2 class="card-title">Çıktı Önizlemesi</h2>
+      <h2 class="card-title">{$_("aspectRatio.outputPreview")}</h2>
       <div class="output-preview">
-        <img class="output-img" src={outputPreviewUrl} alt="Kırpılmış çıktı" />
+        <img class="output-img" src={outputPreviewUrl} alt={$_("aspectRatio.outputAlt")} />
       </div>
     </section>
   {/if}
@@ -331,7 +341,7 @@
   <!-- Kontrol Paneli -->
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
 
     {#if outputPath && !busy}
@@ -340,7 +350,7 @@
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
       >
-        Dizinde Göster
+        {$_("common.showInDir")}
       </button>
     {/if}
 
@@ -354,10 +364,10 @@
           ></div>
         </div>
         <span class="progress-label">
-          {progress != null ? `%${Math.round(progress)}` : "İşleniyor…"}
+          {progress != null ? `%${Math.round(progress)}` : $_("common.processing")}
         </span>
       </div>
-      <button type="button" class="btn btn-danger" onclick={cancelCrop}>İptal</button>
+      <button type="button" class="btn btn-danger" onclick={cancelCrop}>{$_("common.cancel")}</button>
     {:else}
       <button
         type="button"
@@ -365,7 +375,7 @@
         disabled={!canStart}
         onclick={startCrop}
       >
-        {filePath ? "Kırpmayı Başlat" : "Önce Dosya Seç"}
+        {filePath ? $_("aspectRatio.start") : $_("common.selectFileFirstBtn")}
       </button>
     {/if}
   </section>

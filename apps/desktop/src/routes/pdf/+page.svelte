@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
 
   const hasLfc = browser && typeof window !== "undefined" && "lfc" in window && !!window.lfc;
 
@@ -12,15 +14,18 @@
   let dpi = $state(150);
 
   const DPI_PRESETS = [
-    { value: 72,  label: "72 DPI — Web" },
-    { value: 96,  label: "96 DPI — Ekran" },
-    { value: 150, label: "150 DPI — Standart" },
-    { value: 200, label: "200 DPI — Yüksek" },
-    { value: 300, label: "300 DPI — Baskı" },
+    { value: 72, key: "pdf.d72" },
+    { value: 96, key: "pdf.d96" },
+    { value: 150, key: "pdf.d150" },
+    { value: 200, key: "pdf.d200" },
+    { value: 300, key: "pdf.d300" },
   ];
 
   let busy = $state(false);
   let toast = $state<string | null>(null);
+  // Hata biçimi metnin içeriğinden değil bayraktan geliyor: eski
+  // `toast.startsWith("Hata")` denetimi yalnızca Türkçede tutuyordu.
+  let toastError = $state(false);
   let outputDir = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -30,7 +35,7 @@
   async function loadFile(p: string, label: string) {
     fileError = null;
     if (extOf(label) !== "pdf") {
-      fileError = "Yalnızca PDF dosyaları desteklenir.";
+      fileError = get(_)("pdf.pdfOnly");
       return;
     }
     filePath = p;
@@ -56,7 +61,7 @@
     try {
       void loadFile(window.lfc.getPathForFile(file), file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
   }
 
@@ -71,9 +76,11 @@
 
     if (r.ok) {
       outputDir = r.outputDir;
-      toast = `Sayfalar kaydedildi: ${r.outputDir}`;
+      toast = get(_)("pdf.saved", { values: { dir: r.outputDir } });
+      toastError = false;
     } else if (r.ok === false) {
-      toast = `Hata: ${r.message}`;
+      toast = get(_)("common.errorWith", { values: { message: r.message } });
+      toastError = true;
     }
   }
 
@@ -82,23 +89,21 @@
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">PDF → Görüntü</h1>
+    <h1 class="page-title">{$_("pdf.title")}</h1>
     <p class="page-sub">
-      Her PDF sayfasını ayrı görüntü dosyası olarak çıkarır.
-      <strong>Gereksinim:</strong> Sistemde <code>pdftoppm</code> kurulu olmalı
-      (<code>brew install poppler</code> macOS · <code>apt install poppler-utils</code> Linux).
+      {$_("pdf.pageSubtitle")}
     </p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">PDF Dosyası</h2>
+    <h2 class="card-title">{$_("pdf.inputFile")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="PDF dosyası seç"
+      aria-label={$_("pdf.pickPdf")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -109,12 +114,12 @@
         <div class="file-info">
           <span class="file-icon" aria-hidden="true">📄</span>
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">📑</span>
-          <span>PDF dosyası seç (tıkla veya sürükle)</span>
+          <span>{$_("pdf.pickPdfHint")}</span>
         </div>
       {/if}
     </div>
@@ -124,10 +129,10 @@
   </section>
 
   <section class="card">
-    <h2 class="card-title">Çıktı Ayarları</h2>
+    <h2 class="card-title">{$_("pdf.outputSettings")}</h2>
 
     <div class="setting-row">
-      <span class="field-label">Çözünürlük (DPI)</span>
+      <span class="field-label">{$_("pdf.dpi")}</span>
       <div class="preset-group">
         {#each DPI_PRESETS as p (p.value)}
           <button
@@ -135,35 +140,35 @@
             class="preset-btn"
             class:active={dpi === p.value}
             onclick={() => (dpi = p.value)}
-          >{p.label}</button>
+          >{$_(p.key)}</button>
         {/each}
       </div>
     </div>
 
     <div class="setting-row">
-      <span class="field-label">Format</span>
+      <span class="field-label">{$_("pdf.formatLabel")}</span>
       <div class="format-group">
-        {#each [["png","PNG — kayıpsız"],["jpg","JPEG — küçük"],["ppm","PPM — ham"]] as [val,lbl] (val)}
+        {#each [["png","pdf.fPng"],["jpg","pdf.fJpg"],["ppm","pdf.fPpm"]] as [val,lbl] (val)}
           <button
             type="button"
             class="format-btn"
             class:active={format === val}
             onclick={() => (format = val as "png" | "jpg" | "ppm")}
-          >{lbl}</button>
+          >{$_(lbl)}</button>
         {/each}
       </div>
     </div>
 
     <div class="info-box">
-      {dpi} DPI · {format.toUpperCase()} · Her sayfa ayrı dosya olarak çıkarılır.
+      {$_("pdf.info", { values: { dpi, format: format.toUpperCase() } })}
       <br/>
-      <small>Çıktı klasörü: <code>PDF-adı-sayfalar/</code> (PDF ile aynı dizinde).</small>
+      <small>{$_("pdf.outDirNote")}</small>
     </div>
   </section>
 
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
 
     {#if outputDir && !busy}
@@ -171,7 +176,7 @@
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputDir!)}
-      >Klasörü Aç</button>
+      >{$_("common.openFolder")}</button>
     {/if}
 
     {#if busy}
@@ -179,11 +184,11 @@
         <div class="progress-bar">
           <div class="progress-fill indeterminate"></div>
         </div>
-        <span class="progress-label">Dönüştürülüyor…</span>
+        <span class="progress-label">{$_("pdf.converting")}</span>
       </div>
     {:else}
       <button type="button" class="btn btn-primary" disabled={!canStart} onclick={() => void startConvert()}>
-        {filePath ? "Görüntülere Dönüştür" : "Önce PDF Seç"}
+        {filePath ? $_("pdf.convertToImages") : $_("pdf.selectPdfFirst")}
       </button>
     {/if}
   </section>
@@ -194,7 +199,6 @@
   .page-header { margin-bottom: 0.25rem; }
   .page-title { font-size: 1.45rem; font-weight: 700; margin: 0 0 0.3rem; background: linear-gradient(90deg, var(--accent-start), var(--accent-end)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
   .page-sub { font-size: 0.88rem; color: var(--muted); margin: 0; line-height: 1.55; }
-  .page-sub code { background: rgba(255,255,255,0.06); padding: 0.1rem 0.3rem; border-radius: 4px; font-size: 0.82rem; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
   .card-title { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0; }
   .drop-zone { border: 2px dashed var(--border); border-radius: var(--radius-button); padding: 2rem 1rem; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; color: var(--muted); font-size: 0.9rem; user-select: none; }
@@ -215,7 +219,6 @@
   .preset-btn.active, .format-btn.active { border-color: var(--accent-start); background: rgba(56,189,248,0.1); color: var(--accent-start); }
   .info-box { padding: 0.65rem 0.85rem; background: var(--surface-elevated); border-radius: 8px; border: 1px solid var(--border); font-size: 0.84rem; color: var(--muted); line-height: 1.5; }
   .info-box small { font-size: 0.76rem; opacity: 0.75; }
-  .info-box code { background: rgba(255,255,255,0.06); padding: 0.1rem 0.3rem; border-radius: 4px; }
   .action-card { gap: 0.75rem; }
   .toast { margin: 0; padding: 0.55rem 0.85rem; border-radius: 8px; font-size: 0.87rem; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25); color: var(--success); word-break: break-all; }
   .toast.toast-error { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2); color: var(--danger); }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { _ } from "svelte-i18n";
   import Sidebar from "./Sidebar.svelte";
   import Topbar from "./Topbar.svelte";
 
@@ -99,7 +100,7 @@
       type="button"
       class="backdrop"
       class:is-open={drawerOpen}
-      aria-label="Menüyü kapat"
+      aria-label={$_("nav.closeMenu")}
       aria-hidden={!drawerOpen}
       tabindex={drawerOpen ? 0 : -1}
       onclick={() => (drawerOpen = false)}

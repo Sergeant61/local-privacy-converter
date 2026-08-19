@@ -11,6 +11,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["electron/**/*.test.ts"]
+    // Çeviri sözlüğü testi de düz Node: JSON okuyup karşılaştırıyor.
+    include: ["electron/**/*.test.ts", "src/lib/i18n/*.test.ts"]
   }
 });

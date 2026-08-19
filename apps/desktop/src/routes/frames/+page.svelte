@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
 
   const VIDEO_EXTS = new Set(["mp4","m4v","mkv","webm","avi","mov","wmv","flv","ogv","mpg","mpeg","ts","m2ts","mts","3gp","3g2","asf","divx","vob","f4v","dv"]);
 
@@ -16,6 +18,9 @@
   let busy = $state(false);
   let progress = $state<number | null>(null);
   let toast = $state<string | null>(null);
+  // Hata biçimi metnin içeriğinden değil bayraktan geliyor: `toast.startsWith("Hata")`
+  // yalnızca Türkçede tutuyordu, İngilizcede hata mesajı normal renkte kalıyordu.
+  let toastError = $state(false);
   let outputDir = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -25,7 +30,7 @@
   async function loadFile(path: string, label: string) {
     fileError = null;
     if (!VIDEO_EXTS.has(extOf(label))) {
-      fileError = "Yalnızca video dosyaları desteklenir.";
+      fileError = get(_)("common.videoOnly");
       return;
     }
     filePath = path;
@@ -49,7 +54,7 @@
     try {
       void loadFile(window.lfc.getPathForFile(file), file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
   }
 
@@ -57,7 +62,8 @@
     if (!hasLfc || !filePath || !fileLabel) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const dot = fileLabel.lastIndexOf(".");
@@ -77,10 +83,12 @@
 
     if (r.ok) {
       outputDir = r.outputDir;
-      toast = "Kare çıkarma tamamlandı!";
+      toast = get(_)("frames.success");
+      toastError = false;
     } else {
-      const msg = r.ok === false ? (r.message ?? "Hata") : "Hata";
-      toast = `Hata: ${msg}`;
+      const msg = r.ok === false ? (r.message ?? "") : "";
+      toast = get(_)("common.errorWith", { values: { message: msg || get(_)("common.error") } });
+      toastError = true;
     }
   }
 
@@ -88,7 +96,8 @@
     if (hasLfc) await window.lfc.cancelConvert();
     busy = false;
     progress = null;
-    toast = "İptal edildi.";
+    toast = get(_)("common.canceled");
+    toastError = false;
   }
 
   const canStart = $derived(Boolean(filePath && !busy && hasLfc));
@@ -96,19 +105,19 @@
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Kare Çıkarma</h1>
-    <p class="page-sub">Videodan belirli aralıklarla görüntü karesi (frame) çıkarır. Thumbnail üretmek veya içerik analizi için idealdir.</p>
+    <h1 class="page-title">{$_("frames.title")}</h1>
+    <p class="page-sub">{$_("frames.subtitle")}</p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Video Dosyası</h2>
+    <h2 class="card-title">{$_("frames.inputFile")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Video dosyası seç"
+      aria-label={$_("common.pickVideo")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -119,13 +128,13 @@
         <div class="file-info">
           <span class="file-icon" aria-hidden="true">🎬</span>
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">📹</span>
-          <span>Video dosyası seç (tıkla veya sürükle)</span>
-          <span class="drop-sub">MP4, MKV, MOV, AVI ve daha fazlası</span>
+          <span>{$_("common.pickVideoHint")}</span>
+          <span class="drop-sub">{$_("common.videoExts")}</span>
         </div>
       {/if}
     </div>
@@ -135,10 +144,10 @@
   </section>
 
   <section class="card">
-    <h2 class="card-title">Çıkarma Ayarları</h2>
+    <h2 class="card-title">{$_("frames.settings")}</h2>
 
     <div class="setting-row">
-      <label for="interval" class="field-label">Her kaç saniyede bir kare</label>
+      <label for="interval" class="field-label">{$_("frames.intervalLabel")}</label>
       <input
         id="interval"
         type="number"
@@ -148,11 +157,11 @@
         step="0.5"
         bind:value={intervalSec}
       />
-      <span class="field-unit">saniye</span>
+      <span class="field-unit">{$_("frames.seconds")}</span>
     </div>
 
     <div class="setting-row">
-      <span class="field-label">Görüntü Formatı</span>
+      <span class="field-label">{$_("frames.imageFormat")}</span>
       <div class="format-pair">
         <button
           type="button"
@@ -161,7 +170,7 @@
           onclick={() => (outputFormat = "png")}
         >
           <strong>PNG</strong>
-          <small>Kayıpsız</small>
+          <small>{$_("frames.lossless")}</small>
         </button>
         <button
           type="button"
@@ -170,20 +179,19 @@
           onclick={() => (outputFormat = "jpg")}
         >
           <strong>JPG</strong>
-          <small>Daha küçük</small>
+          <small>{$_("frames.smaller")}</small>
         </button>
       </div>
     </div>
 
     <div class="info-box">
-      Her <strong>{intervalSec}s</strong>'de bir <strong>{outputFormat.toUpperCase()}</strong> karesi çıkarılacak.
-      Kareler <code>-kareler/</code> klasörüne kaydedilir.
+      {$_("frames.info", { values: { interval: intervalSec, format: outputFormat.toUpperCase() } })}
     </div>
   </section>
 
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
 
     {#if outputDir && !busy}
@@ -191,7 +199,7 @@
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputDir!)}
-      >Klasörü Aç</button>
+      >{$_("common.openFolder")}</button>
     {/if}
 
     {#if busy}
@@ -199,12 +207,12 @@
         <div class="progress-bar">
           <div class="progress-fill" style="width:{progress ?? 0}%" class:indeterminate={progress == null}></div>
         </div>
-        <span class="progress-label">{progress != null ? `%${Math.round(progress)}` : "İşleniyor…"}</span>
+        <span class="progress-label">{progress != null ? `%${Math.round(progress)}` : $_("common.processing")}</span>
       </div>
-      <button type="button" class="btn btn-danger" onclick={cancel}>İptal</button>
+      <button type="button" class="btn btn-danger" onclick={cancel}>{$_("common.cancel")}</button>
     {:else}
       <button type="button" class="btn btn-primary" disabled={!canStart} onclick={startExtract}>
-        {filePath ? "Kareleri Çıkar" : "Önce Video Seç"}
+        {filePath ? $_("frames.extract") : $_("common.selectVideoFirst")}
       </button>
     {/if}
   </section>
@@ -241,8 +249,6 @@
   .format-btn small { font-size: 0.68rem; color: var(--muted); }
   .format-btn.active small { color: var(--accent-start); opacity: 0.8; }
   .info-box { padding: 0.65rem 0.85rem; background: var(--surface-elevated); border-radius: 8px; border: 1px solid var(--border); font-size: 0.84rem; color: var(--muted); }
-  .info-box strong { color: var(--text); }
-  .info-box code { font-family: monospace; background: rgba(255,255,255,0.06); padding: 0.1rem 0.3rem; border-radius: 3px; }
   .action-card { gap: 0.75rem; }
   .toast { margin: 0; padding: 0.55rem 0.85rem; border-radius: 8px; font-size: 0.87rem; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25); color: var(--success); }
   .toast.toast-error { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2); color: var(--danger); }

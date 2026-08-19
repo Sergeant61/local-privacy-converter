@@ -1,6 +1,9 @@
 <script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
   import { browser } from "$app/environment";
+  import { _, locale } from "svelte-i18n";
+  import { get } from "svelte/store";
+  import { profileLabel } from "$lib/profile-text";
   import { buildProfileJobSpec, getTargetsForKind } from "@lfc/media-formats";
   import type { TargetProfile } from "@lfc/media-formats";
   import type { MediaKind } from "@lfc/types";
@@ -29,6 +32,7 @@
   let jobs = $state<OutputJob[]>([]);
   let busy = $state(false);
   let toast = $state<string | null>(null);
+  let toastError = $state(false);
 
   function extOf(name: string) {
     return (name.split(".").pop() ?? "").toLowerCase();
@@ -70,7 +74,7 @@
     try {
       void loadFile(window.lfc.getPathForFile(file), file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
   }
 
@@ -86,7 +90,8 @@
     if (!hasLfc || !filePath || !fileLabel || selectedIds.size === 0 || busy) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const sep = dirResult.dir.includes("\\") ? "\\" : "/";
@@ -97,7 +102,7 @@
     jobs = selectedProfiles.map((p) => ({
       id: p.id,
       profileId: p.id,
-      profileLabel: p.labelTr,
+      profileLabel: profileLabel(p, get(locale)),
       outputPath: `${dirResult.dir}${sep}${base}-${p.id}.${p.outputExtension}`,
       status: "pending" as JobStatus,
       progress: null
@@ -105,6 +110,7 @@
 
     busy = true;
     toast = null;
+    toastError = false;
 
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
@@ -128,14 +134,15 @@
 
       jobs = jobs.map((j, idx) =>
         idx === i
-          ? { ...j, status: r.ok ? "done" : "error", progress: null, errorMsg: r.ok ? undefined : (r.ok === false ? r.message : "Hata") }
+          ? { ...j, status: r.ok ? "done" : "error", progress: null, errorMsg: r.ok ? undefined : (r.ok === false ? r.message : get(_)("common.error")) }
           : j
       );
     }
 
     busy = false;
     const doneCount = jobs.filter((j) => j.status === "done").length;
-    toast = `${doneCount}/${jobs.length} çıktı tamamlandı.`;
+    toast = get(_)("multiOutput.summary", { values: { done: doneCount, total: jobs.length } });
+    toastError = doneCount === 0;
   }
 
   const canStart = $derived(selectedIds.size > 0 && !!filePath && !busy && hasLfc);
@@ -150,22 +157,19 @@
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Çoklu Çıktı Formatı</h1>
-    <p class="page-sub">
-      Tek bir giriş dosyasından aynı anda birden fazla format üretir.
-      Her seçilen profil için ayrı bir çıktı dosyası oluşturulur.
-    </p>
+    <h1 class="page-title">{$_("multiOutput.title")}</h1>
+    <p class="page-sub">{$_("multiOutput.subtitle")}</p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Giriş Dosyası</h2>
+    <h2 class="card-title">{$_("multiOutput.inputFile")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Dosya seç"
+      aria-label={$_("common.pickFile")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -176,13 +180,13 @@
         <div class="file-info">
           <span class="file-icon" aria-hidden="true">📁</span>
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">📂</span>
-          <span>Dosya seç (tıkla veya sürükle)</span>
-          <span class="drop-sub">Video, ses veya görüntü</span>
+          <span>{$_("common.pickFileHint")}</span>
+          <span class="drop-sub">{$_("multiOutput.dropSub")}</span>
         </div>
       {/if}
     </div>
@@ -193,8 +197,8 @@
 
   {#if filePath && availableProfiles.length > 0}
     <section class="card">
-      <h2 class="card-title">Çıktı Formatları</h2>
-      <p class="select-hint">Birden fazla format seçebilirsiniz.</p>
+      <h2 class="card-title">{$_("multiOutput.selectProfiles")}</h2>
+      <p class="select-hint">{$_("multiOutput.selectHint")}</p>
       <div class="profile-grid">
         {#each availableProfiles as p (p.id)}
           <button
@@ -203,13 +207,13 @@
             class:selected={selectedIds.has(p.id)}
             onclick={() => toggleProfile(p.id)}
           >
-            <span class="chip-label">{p.labelTr}</span>
+            <span class="chip-label">{profileLabel(p, $locale)}</span>
             <span class="chip-ext">.{p.outputExtension}</span>
           </button>
         {/each}
       </div>
       <p class="select-count">
-        {selectedIds.size} format seçili
+        {$_("multiOutput.selectedCount", { values: { count: selectedIds.size } })}
         {#if selectedIds.size > 0}
           — {[...selectedIds].join(", ")}
         {/if}
@@ -219,7 +223,7 @@
 
   {#if jobs.length > 0}
     <section class="card">
-      <h2 class="card-title">Çıktılar</h2>
+      <h2 class="card-title">{$_("multiOutput.outputs")}</h2>
       <ul class="job-list">
         {#each jobs as job (job.id)}
           <li class="job-item" data-status={job.status}>
@@ -232,15 +236,15 @@
                 </div>
                 <span class="job-pct">%{Math.round(job.progress)}</span>
               {:else if job.status === "running"}
-                <span class="job-pct">İşleniyor…</span>
+                <span class="job-pct">{$_("common.processing")}</span>
               {:else if job.status === "done"}
                 <button
                   type="button"
                   class="open-btn"
                   onclick={() => hasLfc && window.lfc.showInFolder(job.outputPath)}
-                >Klasörde göster</button>
+                >{$_("common.showInFolder")}</button>
               {:else if job.status === "error"}
-                <span class="job-error">{job.errorMsg ?? "Hata"}</span>
+                <span class="job-error">{job.errorMsg ?? $_("common.error")}</span>
               {/if}
             </div>
           </li>
@@ -251,7 +255,7 @@
 
   <section class="card action-card">
     {#if toast}
-      <p class="toast" class:toast-error={toast.includes("0/")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
 
     <button
@@ -260,7 +264,9 @@
       disabled={!canStart}
       onclick={() => void startAll()}
     >
-      {busy ? "Dönüştürülüyor…" : `${selectedIds.size} Format Oluştur`}
+      {busy
+        ? $_("multiOutput.converting")
+        : $_("multiOutput.startBtn", { values: { count: selectedIds.size } })}
     </button>
   </section>
 </div>

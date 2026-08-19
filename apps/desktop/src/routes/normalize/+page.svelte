@@ -1,5 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
+  import { _ } from "svelte-i18n";
+  import { get } from "svelte/store";
 
   const AUDIO_EXTS = new Set(["mp3","wav","m4a","flac","opus","aac","ogg","wma","mp4","mkv","mov","avi","webm"]);
 
@@ -16,11 +18,11 @@
   let lra = $state(11);
 
   const PRESET_LABELS = [
-    { label: "Akış (Streaming) — EBU R128 −14 LUFS", lufs: -14, tp: -1.0, lra: 11 },
-    { label: "Yayıncılık (Broadcast) — EBU R128 −23 LUFS", lufs: -23, tp: -1.0, lra: 20 },
-    { label: "Podcast — −16 LUFS", lufs: -16, tp: -1.0, lra: 14 },
-    { label: "YouTube — −14 LUFS", lufs: -14, tp: -1.0, lra: 11 },
-    { label: "Özel", lufs: null, tp: null, lra: null },
+    { labelKey: "normalize.pStreaming", lufs: -14, tp: -1.0, lra: 11 },
+    { labelKey: "normalize.pBroadcast", lufs: -23, tp: -1.0, lra: 20 },
+    { labelKey: "normalize.pPodcast", lufs: -16, tp: -1.0, lra: 14 },
+    { labelKey: "normalize.pYoutube", lufs: -14, tp: -1.0, lra: 11 },
+    { labelKey: "common.custom", lufs: null, tp: null, lra: null },
   ] as const;
 
   let selectedPreset = $state(0);
@@ -38,6 +40,9 @@
   let busy = $state(false);
   let progress = $state<number | null>(null);
   let toast = $state<string | null>(null);
+  // Hata biçimi metnin içeriğinden değil bayraktan geliyor: eski
+  // `toast.startsWith("Hata")` denetimi yalnızca Türkçede tutuyordu.
+  let toastError = $state(false);
   let outputPath = $state<string | null>(null);
 
   function extOf(name: string) {
@@ -49,7 +54,7 @@
     toast = null;
     outputPath = null;
     if (!AUDIO_EXTS.has(extOf(label))) {
-      fileError = "Ses veya video dosyası seçin.";
+      fileError = get(_)("normalize.avOnly");
       return;
     }
     filePath = path;
@@ -73,7 +78,7 @@
     try {
       void loadFile(window.lfc.getPathForFile(file), file.name);
     } catch {
-      fileError = "Dosya yolu alınamadı.";
+      fileError = get(_)("common.pathFailed");
     }
   }
 
@@ -83,7 +88,8 @@
     if (!hasLfc || !filePath || !fileLabel) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      toast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      toast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
+      toastError = true;
       return;
     }
     const dot = fileLabel.lastIndexOf(".");
@@ -105,28 +111,30 @@
 
     if (r.ok) {
       outputPath = out;
-      toast = `Normalizasyon tamamlandı: ${out.split(/[/\\]/).pop()}`;
+      toast = get(_)("normalize.doneWith", { values: { file: out.split(/[/\\]/).pop() } });
+      toastError = false;
     } else if (r.ok === false) {
-      toast = `Hata: ${r.message}`;
+      toast = get(_)("common.errorWith", { values: { message: r.message } });
+      toastError = true;
     }
   }
 </script>
 
 <div class="page">
   <header class="page-header">
-    <h1 class="page-title">Ses Normalizasyonu</h1>
-    <p class="page-sub">FFmpeg <code>loudnorm</code> filtresi ile EBU R128 standardında ses seviyesi dengeleme.</p>
+    <h1 class="page-title">{$_("normalize.title")}</h1>
+    <p class="page-sub">{$_("normalize.pageSubtitle")}</p>
   </header>
 
   <section class="card">
-    <h2 class="card-title">Dosya</h2>
+    <h2 class="card-title">{$_("normalize.file")}</h2>
     <div
       class="drop-zone"
       class:drag={isDragging}
       class:has-file={!!filePath}
       role="button"
       tabindex="0"
-      aria-label="Ses dosyası seç"
+      aria-label={$_("normalize.pickAudio")}
       ondragover={(e) => { e.preventDefault(); isDragging = true; }}
       ondragleave={() => (isDragging = false)}
       ondrop={(e) => { e.preventDefault(); onDrop(e); }}
@@ -137,12 +145,12 @@
         <div class="file-info">
           <span class="file-icon" aria-hidden="true">🎵</span>
           <span class="file-name">{fileLabel}</span>
-          <span class="change-hint">Değiştirmek için tıkla</span>
+          <span class="change-hint">{$_("common.changeHint")}</span>
         </div>
       {:else}
         <div class="drop-hint">
           <span class="drop-icon" aria-hidden="true">🔊</span>
-          <span>Ses veya video dosyası seç (tıkla veya sürükle)</span>
+          <span>{$_("normalize.pickAudioHint")}</span>
         </div>
       {/if}
     </div>
@@ -152,7 +160,7 @@
   </section>
 
   <section class="card">
-    <h2 class="card-title">Normalizasyon Ön Ayarları</h2>
+    <h2 class="card-title">{$_("normalize.presets")}</h2>
     <div class="preset-list">
       {#each PRESET_LABELS as preset, i (i)}
         <button
@@ -160,13 +168,13 @@
           class="preset-btn"
           class:active={selectedPreset === i}
           onclick={() => applyPreset(i)}
-        >{preset.label}</button>
+        >{$_(preset.labelKey)}</button>
       {/each}
     </div>
 
     <div class="params-grid">
       <label class="param-field">
-        <span class="param-label">Hedef LUFS (Integrated)</span>
+        <span class="param-label">{$_("normalize.lufsLabel")}</span>
         <div class="param-row">
           <input
             type="range"
@@ -179,11 +187,11 @@
           />
           <span class="param-val">{targetLufs} LUFS</span>
         </div>
-        <span class="param-hint">YouTube/Streaming: −14 · Podcast: −16 · Yayıncılık: −23</span>
+        <span class="param-hint">{$_("normalize.lufsHint")}</span>
       </label>
 
       <label class="param-field">
-        <span class="param-label">True Peak (dBTP)</span>
+        <span class="param-label">{$_("normalize.peakLabel")}</span>
         <div class="param-row">
           <input
             type="range"
@@ -196,11 +204,11 @@
           />
           <span class="param-val">{truePeak.toFixed(1)} dBTP</span>
         </div>
-        <span class="param-hint">Klipping önlemek için −1.0 dBTP önerilir</span>
+        <span class="param-hint">{$_("normalize.peakHint")}</span>
       </label>
 
       <label class="param-field">
-        <span class="param-label">LRA (Loudness Range)</span>
+        <span class="param-label">{$_("normalize.lraLabel")}</span>
         <div class="param-row">
           <input
             type="range"
@@ -213,7 +221,7 @@
           />
           <span class="param-val">{lra} LU</span>
         </div>
-        <span class="param-hint">Ses dinamiği genişliği — müzik için 7-11, konuşma için 4-7</span>
+        <span class="param-hint">{$_("normalize.lraHint")}</span>
       </label>
     </div>
   </section>
@@ -228,14 +236,14 @@
       </div>
     {/if}
     {#if toast}
-      <p class="toast" class:toast-error={toast.startsWith("Hata")} role="status">{toast}</p>
+      <p class="toast" class:toast-error={toastError} role="status">{toast}</p>
     {/if}
     {#if outputPath && !busy}
       <button
         type="button"
         class="btn btn-secondary"
         onclick={() => hasLfc && window.lfc.showInFolder(outputPath!)}
-      >Dizinde Göster</button>
+      >{$_("normalize.showInDir")}</button>
     {/if}
     <button
       type="button"
@@ -243,7 +251,7 @@
       disabled={!canNormalize}
       onclick={normalize}
     >
-      {#if busy}Normalleştiriliyor…{:else if !filePath}Önce Dosya Seç{:else}Normalleştir{/if}
+      {#if busy}{$_("normalize.normalizing")}{:else if !filePath}{$_("common.selectFileFirst")}{:else}{$_("normalize.normalize")}{/if}
     </button>
   </section>
 </div>
@@ -253,7 +261,6 @@
   .page-header { margin-bottom: 0.25rem; }
   .page-title { font-size: 1.45rem; font-weight: 700; margin: 0 0 0.3rem; background: linear-gradient(90deg, var(--accent-start), var(--accent-end)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
   .page-sub { font-size: 0.88rem; color: var(--muted); margin: 0; }
-  .page-sub code { font-family: monospace; background: var(--surface-elevated); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85em; border: 1px solid var(--border); }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
   .card-title { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0; }
   .drop-zone { border: 2px dashed var(--border); border-radius: var(--radius-button); padding: 2rem 1rem; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; color: var(--muted); font-size: 0.9rem; user-select: none; }

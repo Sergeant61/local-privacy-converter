@@ -1,11 +1,14 @@
 <script lang="ts">
   import { browser } from "$app/environment";
   import { onMount } from "svelte";
+  import { _, locale } from "svelte-i18n";
+  import { get } from "svelte/store";
 
   import { buildFfmpegArgs } from "@lfc/ffmpeg-core/build-args";
   import type { ConvertJobSpec, VideoEncoderChoice } from "@lfc/types";
   import type { MediaProbeSummaryPayload } from "@lfc/validators";
   import { recordConversion } from "$lib/history/store";
+  import { profileLabel, socialInfo } from "$lib/profile-text";
   import {
     buildHtmlFileAccept,
     filterTargetsByEncoders,
@@ -117,49 +120,51 @@
   let outputPreviewUrl = $state<string | null>(null);
 
   const QUALITY_OPTIONS = [
-    { value: "high",       label: "Yüksek kalite",    desc: "CRF 18 — en iyi görüntü, büyük dosya" },
-    { value: "compatible", label: "Uyumlu",            desc: "CRF 20 — geniş cihaz desteği, kaliteli" },
-    { value: "balanced",   label: "Dengeli (önerilen)",desc: "CRF 23 — iyi kalite, makul boyut" },
-    { value: "small",      label: "Küçük dosya",       desc: "CRF 28 — belirgin sıkıştırma" },
-    { value: "very_small", label: "Çok küçük",         desc: "CRF 35 — maksimum sıkıştırma, kayıp gözle görülür" },
+    { value: "high",       labelKey: "quality.high",       descKey: "quality.highDesc" },
+    { value: "compatible", labelKey: "quality.compatible", descKey: "quality.compatibleDesc" },
+    { value: "balanced",   labelKey: "quality.balanced",   descKey: "quality.balancedDesc" },
+    { value: "small",      labelKey: "quality.small",      descKey: "quality.smallDesc" },
+    { value: "very_small", labelKey: "quality.verySmall",  descKey: "quality.verySmallDesc" },
   ] as const;
 
-  const ENCODER_LABELS: Record<string, string> = {
-    libx264:           "libx264 — CPU · orta hız",
-    libx265:           "libx265 — CPU · yavaş (daha iyi sıkıştırma)",
-    libsvtav1:         "libsvtav1 — CPU · yavaş (AV1, en iyi sıkıştırma)",
-    libvpx_vp9:        "libvpx-vp9 — CPU · yavaş",
-    h264_nvenc:        "h264_nvenc — NVIDIA GPU · çok hızlı",
-    hevc_nvenc:        "hevc_nvenc — NVIDIA GPU · çok hızlı (H.265)",
-    h264_videotoolbox: "h264_videotoolbox — Apple GPU · çok hızlı",
-    hevc_videotoolbox: "hevc_videotoolbox — Apple GPU · çok hızlı (H.265)",
-    h264_qsv:          "h264_qsv — Intel GPU · hızlı",
-    hevc_qsv:          "hevc_qsv — Intel GPU · hızlı (H.265)",
-    h264_amf:          "h264_amf — AMD GPU · hızlı",
-    hevc_amf:          "hevc_amf — AMD GPU · hızlı (H.265)",
-    h264_vaapi:        "h264_vaapi — VAAPI · hızlı (Linux)",
-    hevc_vaapi:        "hevc_vaapi — VAAPI · hızlı Linux H.265)",
+  /** Anahtar sırası menüdeki sırayı belirliyor; değer `encoders.*` çeviri anahtarı. */
+  const ENCODER_LABEL_KEYS: Record<string, string> = {
+    libx264:           "encoders.libx264",
+    libx265:           "encoders.libx265",
+    libsvtav1:         "encoders.libsvtav1",
+    libvpx_vp9:        "encoders.libvpx_vp9",
+    h264_nvenc:        "encoders.h264_nvenc",
+    hevc_nvenc:        "encoders.hevc_nvenc",
+    h264_videotoolbox: "encoders.h264_videotoolbox",
+    hevc_videotoolbox: "encoders.hevc_videotoolbox",
+    h264_qsv:          "encoders.h264_qsv",
+    hevc_qsv:          "encoders.hevc_qsv",
+    h264_amf:          "encoders.h264_amf",
+    hevc_amf:          "encoders.hevc_amf",
+    h264_vaapi:        "encoders.h264_vaapi",
+    hevc_vaapi:        "encoders.hevc_vaapi",
   };
 
-  const RESOLUTION_OPTIONS: { value: ResolutionPreset; label: string }[] = [
-    { value: "original", label: "Orijinal" },
+  // `label` null olan seçeneklerin metni çeviriden geliyor; diğerleri ölçü adı.
+  const RESOLUTION_OPTIONS: { value: ResolutionPreset; label: string | null; labelKey?: string }[] = [
+    { value: "original", label: null, labelKey: "home.resOriginal" },
     { value: "360p",     label: "360p — 640px" },
     { value: "480p",     label: "480p — 854px" },
     { value: "720p",     label: "720p — 1280px" },
     { value: "1080p",    label: "1080p — 1920px" },
     { value: "1440p",    label: "1440p / 2K — 2560px" },
     { value: "2160p",    label: "2160p / 4K — 3840px" },
-    { value: "custom",   label: "Özel…" },
+    { value: "custom",   label: null, labelKey: "home.resCustom" },
   ];
 
-  const ASPECT_RATIO_OPTIONS: { value: AspectRatioPreset; label: string }[] = [
-    { value: "original", label: "Orijinal" },
-    { value: "16:9",     label: "16:9 — Yatay (TV / monitör)" },
-    { value: "9:16",     label: "9:16 — Dikey (stories / reels)" },
-    { value: "1:1",      label: "1:1 — Kare (Instagram feed)" },
-    { value: "4:3",      label: "4:3 — Klasik TV" },
-    { value: "21:9",     label: "21:9 — Sinematik (ultra-geniş)" },
-    { value: "custom",   label: "Özel…" },
+  const ASPECT_RATIO_OPTIONS: { value: AspectRatioPreset; labelKey: string }[] = [
+    { value: "original", labelKey: "home.arOriginal" },
+    { value: "16:9",     labelKey: "home.ar169" },
+    { value: "9:16",     labelKey: "home.ar916" },
+    { value: "1:1",      labelKey: "home.ar11" },
+    { value: "4:3",      labelKey: "home.ar43" },
+    { value: "21:9",     labelKey: "home.ar219" },
+    { value: "custom",   labelKey: "home.arCustom" },
   ];
 
   const fileAccept = buildHtmlFileAccept();
@@ -186,7 +191,7 @@
     // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const platforms = new Map<string, typeof targetsWithAvailability>();
     for (const row of targetsWithAvailability.filter((r) => !!r.profile.socialMeta)) {
-      const key = row.profile.socialMeta!.platformLabelTr;
+      const key = row.profile.socialMeta!.platformLabel;
       if (!platforms.has(key)) platforms.set(key, []);
       platforms.get(key)!.push(row);
     }
@@ -267,7 +272,7 @@
     videoPreviewUrl = null;
     waveformPath = null;
     if (!hasLfc) {
-      probeError = "Bu ekran yalnızca masaüstü (Electron) ortamında tam çalışır.";
+      probeError = get(_)("home.desktopOnly");
       return;
     }
     const r = await window.lfc.probeMedia({ inputPath: path });
@@ -351,8 +356,7 @@
     convertToast = null;
     const ext = normalizeExtension(label);
     if (!isKnownInputExtension(ext)) {
-      probeError =
-        "Bu uzantı listede yok. Desteklenen türlerden birini seçin (ör. mp4, mp3, png).";
+      probeError = get(_)("home.unknownExt");
       probeSummary = null;
       filePath = null;
       fileLabel = null;
@@ -384,7 +388,7 @@
       const path = window.lfc.getPathForFile(file);
       validateAndSetFile(path, file.name);
     } catch {
-      probeError = "Dosya yolu alınamadı. Lütfen güncel Electron ile deneyin.";
+      probeError = get(_)("home.pathFailedElectron");
     }
     input.value = "";
   }
@@ -405,12 +409,12 @@
     const ext = extension.startsWith(".") ? extension.slice(1) : extension;
     const dot = inputName.lastIndexOf(".");
     const base = dot >= 0 ? inputName.slice(0, dot) : inputName;
-    return `${base}-donusum.${ext}`;
+    return `${base}${get(_)("home.outputFileSuffix")}.${ext}`;
   }
 
   function buildJobSpec(outPath: string): ConvertJobSpec {
     if (!filePath) {
-      throw new Error("Dosya yolu yok");
+      throw new Error(get(_)("common.pathFailed"));
     }
     const res = resolutionHints();
     const aspect =
@@ -452,7 +456,7 @@
       const ext = profile?.outputExtension ?? "mp4";
       const dirResult = await window.lfc.getOutputDir();
       if (dirResult.ok === false) {
-        convertToast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+        convertToast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
         return;
       }
       const filename = suggestOutputFilename(fileLabel ?? "dosya", ext);
@@ -481,7 +485,7 @@
       const inputExt = (fileLabel ?? "").split(".").pop()?.toLowerCase() ?? "";
       const outputExt = ext.toLowerCase();
       if (r.ok === false) {
-        convertToast = convertCancelled ? "Dönüşüm iptal edildi." : r.message;
+        convertToast = convertCancelled ? get(_)("home.convertCanceled") : r.message;
         if (!convertCancelled) {
           void recordConversion({
             timestamp: Date.now(),
@@ -497,7 +501,7 @@
         }
       } else {
         outputPath = autoPath;
-        convertToast = `Kaydedildi: ${autoPath}`;
+        convertToast = get(_)("home.outputSaved", { values: { path: autoPath } });
         void recordConversion({
           timestamp: Date.now(),
           inputFilename: fileLabel ?? "",
@@ -529,13 +533,13 @@
     if (!hasLfc || !filePath || !fileLabel || convertBusy) return;
     const dirResult = await window.lfc.getOutputDir();
     if (dirResult.ok === false) {
-      convertToast = `Çıktı klasörü oluşturulamadı: ${dirResult.message}`;
+      convertToast = get(_)("common.outputDirFailed", { values: { message: dirResult.message } });
       return;
     }
     const dot = fileLabel.lastIndexOf(".");
     const base = dot >= 0 ? fileLabel.slice(0, dot) : fileLabel;
     const sep = dirResult.dir.includes("\\") ? "\\" : "/";
-    const outPath = `${dirResult.dir}${sep}${base}-ses.mp3`;
+    const outPath = `${dirResult.dir}${sep}${base}${get(_)("home.audioFileSuffix")}.mp3`;
 
     const spec: import("@lfc/types").ConvertJobSpec = {
       inputPath: filePath,
@@ -562,7 +566,7 @@
 
     if (r.ok) {
       outputPath = outPath;
-      convertToast = `Ses çıkarıldı: ${outPath}`;
+      convertToast = get(_)("home.audioExtracted", { values: { path: outPath } });
     } else if (r.ok === false) {
       convertToast = r.message;
     }
@@ -579,7 +583,7 @@
       const path = window.lfc.getPathForFile(file);
       validateAndSetFile(path, file.name);
     } catch {
-      probeError = "Sürüklenen dosya için yerel yol alınamadı.";
+      probeError = get(_)("home.dropPathFailed");
     }
   }
 
@@ -613,23 +617,19 @@
 <div class="page">
   <header class="hero">
     <p class="eyebrow">Local Privacy Converter</p>
-    <h1>Dosyalarınız cihazdan çıkmadan dönüştürün ve sıkıştırın</h1>
-    <p class="lede">
-      Medya işlemleri yerelde kalır; buluta yüklenmez. İşlem sırasında internet bağlantısı gerekmez.
-    </p>
+    <h1>{$_("home.heroTitle")}</h1>
+    <p class="lede">{$_("home.heroLede")}</p>
   </header>
 
   <section class="card" aria-labelledby="job-title">
     <div class="card-header">
-      <h2 id="job-title">Yeni iş</h2>
-      <p class="card-sub">
-        Dosya seçildiğinde tür ffprobe ile analiz edilir; yalnızca uygun hedef formatlar listelenir.
-      </p>
+      <h2 id="job-title">{$_("home.jobTitle")}</h2>
+      <p class="card-sub">{$_("home.jobSub")}</p>
     </div>
 
     <div
       role="region"
-      aria-label="Dosya bırakma alanı"
+      aria-label={$_("home.dropRegion")}
       class="drop"
       class:drag={isDragging}
       class:compact={!!filePath}
@@ -642,13 +642,11 @@
       ondrop={onDrop}
     >
       {#if !filePath}
-        <p class="drop-title">Dosyaları buraya bırakın</p>
-        <p class="drop-sub">
-          Sürükleyip bırakın veya seçin. Uzantı, desteklenen allowlist ile sınırlıdır.
-        </p>
+        <p class="drop-title">{$_("home.dropTitle")}</p>
+        <p class="drop-sub">{$_("home.dropSub")}</p>
         <div class="pick-row">
           <label class="file-pick">
-            <span class="cta">Dosya seç</span>
+            <span class="cta">{$_("home.pickCta")}</span>
             <input
               type="file"
               class="sr-only"
@@ -662,7 +660,7 @@
           <span class="drop-compact-name">{fileLabel}</span>
           <div class="pick-row">
             <label class="file-pick">
-              <span class="cta small">Değiştir</span>
+              <span class="cta small">{$_("home.changeCta")}</span>
               <input
                 type="file"
                 class="sr-only"
@@ -681,9 +679,9 @@
     {#if probeSummary && filePath}
       <div class="preview-panel">
         <div class="preview-col">
-          <p class="preview-col-label">Kaynak</p>
+          <p class="preview-col-label">{$_("home.sourceCol")}</p>
           {#if inputPreviewUrl}
-            <img src={inputPreviewUrl} alt="Kaynak önizleme" class="preview-img" />
+            <img src={inputPreviewUrl} alt={$_("home.sourceAlt")} class="preview-img" />
           {:else if videoPreviewUrl}
             <!-- svelte-ignore a11y_media_has_caption -->
             <video src={videoPreviewUrl} controls class="preview-img preview-video"></video>
@@ -693,11 +691,11 @@
               width="320"
               height="80"
               class="waveform-canvas"
-              aria-label="Ses dalga formu önizlemesi"
+              aria-label={$_("home.waveformAria")}
             ></canvas>
           {:else}
-            <div class="preview-placeholder" aria-label="Önizleme mevcut değil">
-              <span class="placeholder-kind">Video</span>
+            <div class="preview-placeholder" aria-label={$_("home.noPreviewAria")}>
+              <span class="placeholder-kind">{$_("home.placeholderVideo")}</span>
             </div>
           {/if}
           <p class="preview-filename" title={fileLabel ?? ""}>{fileLabel}</p>
@@ -712,15 +710,15 @@
         <div class="preview-arrow" aria-hidden="true">&#8594;</div>
 
         <div class="preview-col">
-          <p class="preview-col-label">Çıktı</p>
+          <p class="preview-col-label">{$_("home.outputCol")}</p>
           {#if outputPreviewUrl}
-            <img src={outputPreviewUrl} alt="Çıktı önizleme" class="preview-img" />
+            <img src={outputPreviewUrl} alt={$_("home.outputAlt")} class="preview-img" />
           {:else if outputPath}
-            <div class="preview-placeholder done" aria-label="Dönüşüm tamamlandı">
+            <div class="preview-placeholder done" aria-label={$_("home.doneAria")}>
               <span class="placeholder-done-mark">&#10003;</span>
             </div>
           {:else}
-            <div class="preview-placeholder pending" aria-label="Henüz dönüştürülmedi">
+            <div class="preview-placeholder pending" aria-label={$_("home.pendingAria")}>
               <span class="placeholder-pending-dots">&#8943;</span>
             </div>
           {/if}
@@ -732,32 +730,32 @@
               class="show-in-folder-btn"
               onclick={() => void window.lfc.showInFolder(outputPath!)}
             >
-              Dizinde göster
+              {$_("common.showInFolder")}
             </button>
           {:else}
-            <p class="preview-filename muted-hint">Dönüşüm sonrası burada görünecek</p>
+            <p class="preview-filename muted-hint">{$_("home.outputAfterHint")}</p>
           {/if}
         </div>
       </div>
     {/if}
 
     <section class="settings-block" aria-labelledby="simple-settings">
-      <h3 class="block-title" id="simple-settings">Basit ayarlar</h3>
+      <h3 class="block-title" id="simple-settings">{$_("home.simpleSettings")}</h3>
       <div class="grid">
         <label class="field">
-          <span>Hedef format</span>
+          <span>{$_("home.targetFormat")}</span>
           <select
             bind:value={targetProfileId}
             disabled={!probeSummary || targetsWithAvailability.length === 0}
           >
             {#if !probeSummary}
-              <option value={targetProfileId}>Önce dosya seçin</option>
+              <option value={targetProfileId}>{$_("home.pickFileFirst")}</option>
             {:else}
               {#if groupedTargets.general.length > 0}
-                <optgroup label="Genel">
+                <optgroup label={$_("home.groupGeneral")}>
                   {#each groupedTargets.general as row (row.profile.id)}
                     <option value={row.profile.id} disabled={!row.ok}>
-                      {row.profile.labelTr}{!row.ok ? " (eksik encoder)" : ""}
+                      {profileLabel(row.profile, $locale)}{!row.ok ? $_("home.missingEncoderSuffix") : ""}
                     </option>
                   {/each}
                 </optgroup>
@@ -766,7 +764,7 @@
                 <optgroup label={platformLabel}>
                   {#each rows as row (row.profile.id)}
                     <option value={row.profile.id} disabled={!row.ok}>
-                      {row.profile.labelTr}{!row.ok ? " (eksik encoder)" : ""}
+                      {profileLabel(row.profile, $locale)}{!row.ok ? $_("home.missingEncoderSuffix") : ""}
                     </option>
                   {/each}
                 </optgroup>
@@ -778,31 +776,34 @@
         {#if selectedRow?.profile.socialMeta}
           {@const sm = selectedRow.profile.socialMeta}
           <div class="social-info-card">
-            <p class="social-info-title">{sm.platformLabelTr}</p>
-            <p class="social-info-text">{sm.infoTr}</p>
+            <p class="social-info-title">{sm.platformLabel}</p>
+            <p class="social-info-text">{socialInfo(sm, $locale)}</p>
           </div>
         {/if}
 
         {#if simpleFields.includes("quality_preset")}
           <div class="field">
-            <label for="quality-select">Kalite ön ayarı</label>
+            <label for="quality-select">{$_("home.qualityPreset")}</label>
             <select id="quality-select" bind:value={qualityPreset}>
               {#each QUALITY_OPTIONS as opt (opt.value)}
-                <option value={opt.value} title={opt.desc}>{opt.label}</option>
+                <option value={opt.value} title={$_(opt.descKey)}>{$_(opt.labelKey)}</option>
               {/each}
             </select>
             <p class="field-hint">
-              {QUALITY_OPTIONS.find(o => o.value === qualityPreset)?.desc ?? ""}
+              {(() => {
+                const key = QUALITY_OPTIONS.find((o) => o.value === qualityPreset)?.descKey;
+                return key ? $_(key) : "";
+              })()}
             </p>
           </div>
         {/if}
 
         {#if simpleFields.includes("resolution_preset") && !selectedHints?.audioOnlyOutput}
           <div class="field">
-            <label for="resolution-select">Çözünürlük</label>
+            <label for="resolution-select">{$_("home.resolution")}</label>
             <select id="resolution-select" bind:value={resolutionPreset}>
               {#each RESOLUTION_OPTIONS as opt (opt.value)}
-                <option value={opt.value}>{opt.label}</option>
+                <option value={opt.value}>{opt.label ?? $_(opt.labelKey!)}</option>
               {/each}
             </select>
             {#if resolutionPreset === "custom"}
@@ -812,7 +813,7 @@
                 min="64"
                 max="7680"
                 step="2"
-                placeholder="Genişlik (px)"
+                placeholder={$_("home.widthPlaceholder")}
                 value={customWidth ?? ""}
                 oninput={(e) => {
                   const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
@@ -823,50 +824,48 @@
           </div>
 
           <div class="field">
-            <label for="aspect-ratio-select">En-Boy Oranı</label>
+            <label for="aspect-ratio-select">{$_("home.aspectRatio")}</label>
             <select id="aspect-ratio-select" bind:value={aspectRatioPreset}>
               {#each ASPECT_RATIO_OPTIONS as opt (opt.value)}
-                <option value={opt.value}>{opt.label}</option>
+                <option value={opt.value}>{$_(opt.labelKey)}</option>
               {/each}
             </select>
             {#if aspectRatioPreset === "custom"}
               <input
                 type="text"
                 class="number-input"
-                placeholder="ör. 16:9"
+                placeholder={$_("home.aspectPlaceholder")}
                 bind:value={customAspectRatio}
               />
-              <p class="field-hint">Kaynak kırpılarak merkez korunur.</p>
+              <p class="field-hint">{$_("home.aspectHint")}</p>
             {:else if aspectRatioPreset !== "original"}
-              <p class="field-hint">Kaynak kırpılarak merkez korunur.</p>
+              <p class="field-hint">{$_("home.aspectHint")}</p>
             {/if}
           </div>
         {/if}
       </div>
 
       {#if noAudioWarning}
-        <p class="warn">
-          Seçili kaynak dosyada ses akışı bulunamadı. Bu profil yalnızca ses çıktısı üretir; dönüşüm başlatılamaz.
-        </p>
+        <p class="warn">{$_("home.noAudioWarn")}</p>
       {/if}
 
       {#if selectedRow && !selectedRow.ok}
         <p class="warn">
-          Bu hedef için şu encoder’lar eksik:
-          <strong>{selectedRow.missing.join(", ")}</strong>. FFmpeg derlemenizi veya paketinizi kontrol edin.
+          {$_("home.missingEncodersPrefix")}
+          <strong>{selectedRow.missing.join(", ")}</strong>{$_("home.missingEncodersSuffix")}
         </p>
       {/if}
     </section>
 
     {#if profiles.length > 0 || showProfileSave}
       <details class="profiles-section">
-        <summary>Kaydedilmiş Profiller ({profiles.length})</summary>
+        <summary>{$_("home.savedProfiles", { values: { count: profiles.length } })}</summary>
         <div class="profiles-body">
           {#each profiles as p (p.id)}
             <div class="profile-row">
               <span class="profile-name" title={`${p.targetProfileId}${p.qualityPreset ? ' · ' + p.qualityPreset : ''}`}>{p.name}</span>
-              <button type="button" class="profile-load-btn" onclick={() => void applyProfile(p)}>Uygula</button>
-              <button type="button" class="profile-del-btn" onclick={() => void deleteProfile(p.id)}>Sil</button>
+              <button type="button" class="profile-load-btn" onclick={() => void applyProfile(p)}>{$_("home.applyProfile")}</button>
+              <button type="button" class="profile-del-btn" onclick={() => void deleteProfile(p.id)}>{$_("home.deleteProfile")}</button>
             </div>
           {/each}
           {#if showProfileSave}
@@ -874,21 +873,21 @@
               <input
                 type="text"
                 class="profile-name-input"
-                placeholder="Profil adı…"
+                placeholder={$_("home.profileNamePlaceholder")}
                 bind:value={profileSaveName}
                 onkeydown={(e) => e.key === "Enter" && void saveCurrentProfile()}
               />
-              <button type="button" class="profile-load-btn" onclick={() => void saveCurrentProfile()} disabled={!profileSaveName.trim()}>Kaydet</button>
-              <button type="button" class="profile-del-btn" onclick={() => { showProfileSave = false; profileSaveName = ""; }}>İptal</button>
+              <button type="button" class="profile-load-btn" onclick={() => void saveCurrentProfile()} disabled={!profileSaveName.trim()}>{$_("home.saveBtn")}</button>
+              <button type="button" class="profile-del-btn" onclick={() => { showProfileSave = false; profileSaveName = ""; }}>{$_("common.cancel")}</button>
             </div>
           {:else}
-            <button type="button" class="profile-add-btn" onclick={() => (showProfileSave = true)}>+ Mevcut ayarları kaydet</button>
+            <button type="button" class="profile-add-btn" onclick={() => (showProfileSave = true)}>{$_("home.addProfile")}</button>
           {/if}
         </div>
       </details>
     {:else}
       <button type="button" class="profile-add-btn-inline" onclick={() => (showProfileSave = true)}>
-        + Profil kaydet
+        {$_("home.addProfileInline")}
       </button>
     {/if}
 
@@ -902,23 +901,23 @@
       >
         {convertBusy
           ? convertProgress != null
-            ? `Dönüşüm… %${Math.round(convertProgress)}`
-            : "Dönüşüm çalışıyor…"
-          : "Dönüşümü başlat"}
+            ? $_("home.convertProgressBtn", { values: { percent: Math.round(convertProgress) } })
+            : $_("home.convertRunning")
+          : $_("home.startConvert")}
       </button>
       {#if convertBusy}
         <button
           type="button"
           class="cta stop-btn"
           onclick={() => void cancelConversion()}
-        >Durdur</button>
+        >{$_("home.stop")}</button>
       {:else if probeSummary?.inferredKind === "video" && filePath && !convertBusy}
         <button
           type="button"
           class="cta quick-audio-btn"
-          title="Videodan tek tıkla MP3 ses çıkar"
+          title={$_("home.quickAudioTitle")}
           onclick={() => void quickExtractAudio()}
-        >♪ MP3 Çıkar</button>
+        >{$_("home.quickAudio")}</button>
       {/if}
       {#if convertToast}
         <p class="convert-status" role="status">{convertToast}</p>
@@ -927,19 +926,19 @@
 
     {#if convertLog.length > 0}
       <details class="log-details">
-        <summary>FFmpeg log ({convertLog.length} satır)</summary>
+        <summary>{$_("home.logSummary", { values: { count: convertLog.length } })}</summary>
         <pre class="log-output" aria-live="polite">{convertLog.join("\n")}</pre>
         <div class="log-actions">
-          <button type="button" class="log-clear-btn" onclick={() => (convertLog = [])}>Temizle</button>
+          <button type="button" class="log-clear-btn" onclick={() => (convertLog = [])}>{$_("home.clearLog")}</button>
         </div>
       </details>
     {/if}
 
     <details class="advanced">
-      <summary>Gelişmiş ayarlar</summary>
+      <summary>{$_("home.advanced")}</summary>
       <div class="advanced-body">
         {#if capsLoading}
-          <p class="muted">Codec listesi yükleniyor…</p>
+          <p class="muted">{$_("home.codecLoading")}</p>
         {:else if capsError}
           <p class="error" role="alert">{capsError}</p>
         {/if}
@@ -958,83 +957,85 @@
                 class:ok={encoderSet.has(enc)}
                 class:bad={!encoderSet.has(enc)}
                 role="listitem"
-                title={encoderSet.has(enc) ? `${enc} encoder sistemde mevcut` : `${enc} encoder bulunamadı — bu format kullanılamaz`}
+                title={encoderSet.has(enc)
+                  ? $_("home.encoderPresentTitle", { values: { enc } })
+                  : $_("home.encoderMissingTitle", { values: { enc } })}
               >
-                {enc}: {encoderSet.has(enc) ? "yüklü" : "yok"}
+                {enc}: {encoderSet.has(enc) ? $_("home.encoderInstalled") : $_("home.encoderMissing")}
               </span>
             {/each}
           </div>
         {/if}
 
         {#if advancedFields.includes("hwaccel_list")}
-          <p class="meta-row" title="Sistemde bulunan GPU/donanım hızlandırma yöntemleri. Encoder seçiminde otomatik kullanılır.">
-            <span class="label">Donanım hızlandırma</span>
+          <p class="meta-row" title={$_("home.hwAccelTitle")}>
+            <span class="label">{$_("home.hwAccel")}</span>
             <span class="value">{hwaccels.length ? hwaccels.join(", ") : "—"}</span>
           </p>
         {/if}
 
         {#if advancedFields.includes("override_video_encoder") && selectedRow?.profile.hasVideoOut}
-          <label class="field" title="Hangi encoder kullanılacağını seçin. GPU encoder'lar çok daha hızlıdır ancak bazı sistemlerde bulunmayabilir.">
-            <span>Video encoder</span>
+          <label class="field" title={$_("home.encoderSelectTitle")}>
+            <span>{$_("home.videoEncoder")}</span>
             <select bind:value={overrideVideoEncoder} onchange={() => (encoderPickedByUser = true)}>
-              <option value="">Varsayılan (profil)</option>
-              {#each Object.entries(ENCODER_LABELS) as [enc, label] (enc)}
+              <option value="">{$_("home.encoderDefault")}</option>
+              {#each Object.entries(ENCODER_LABEL_KEYS) as [enc, labelKey] (enc)}
                 {#if encoderSet.has(enc)}
-                  <option value={enc}>{label}</option>
+                  <option value={enc}>{$_(labelKey)}</option>
                 {/if}
               {/each}
             </select>
             {#if overrideVideoEncoder && GPU_ENCODERS.has(overrideVideoEncoder)}
-              <p class="field-hint gpu-hint">GPU encoder etkin — donanım hızlandırma kullanılıyor.</p>
+              <p class="field-hint gpu-hint">{$_("home.gpuHint")}</p>
             {/if}
           </label>
         {/if}
 
         {#if probeSummary && probeSummary.inferredKind !== "image-only"}
           <label class="field">
-            <span>Maksimum boyut (MB)</span>
+            <span>{$_("home.maxSize")}</span>
             <input
               type="number"
               class="number-input"
               min="1"
               step="1"
-              placeholder="Sınır yok"
+              placeholder={$_("home.noLimit")}
               value={targetSizeMb ?? ""}
               oninput={(e) => {
                 const v = parseFloat((e.currentTarget as HTMLInputElement).value);
                 targetSizeMb = Number.isFinite(v) && v > 0 ? v : null;
               }}
             />
-            <p class="field-hint">Ayarlanırsa FFmpeg çıktıyı bu boyutta keser (-fs).</p>
+            <p class="field-hint">{$_("home.maxSizeHint")}</p>
           </label>
         {/if}
 
         {#if probeSummary && !selectedHints?.audioOnlyOutput && probeSummary.hasAudio !== false}
           <label class="field">
-            <span>Ses kanalı</span>
+            <span>{$_("home.audioChannels")}</span>
             <select bind:value={audioChannels}>
-              <option value="">Kaynak ile aynı</option>
-              <option value="1">Mono (1 kanal)</option>
-              <option value="2">Stereo (2 kanal)</option>
+              <option value="">{$_("home.audioSame")}</option>
+              <option value="1">{$_("home.audioMono")}</option>
+              <option value="2">{$_("home.audioStereo")}</option>
             </select>
-            <p class="field-hint">Mono: dosya boyutu küçülür, stereo ses kaybolur. Stereo: uyumluluk için zorla.</p>
+            <p class="field-hint">{$_("home.audioHint")}</p>
           </label>
         {/if}
 
         <label class="field">
-          <span>Ekstra FFmpeg argümanları</span>
+          <span>{$_("home.extraArgs")}</span>
           <input
             type="text"
             class="text-input"
             placeholder="-bf 2 -g 30 -movflags +faststart"
             bind:value={extraFfmpegArgsRaw}
           />
-          <p class="field-hint">Çıktı yolundan önce eklenir. Boşlukla ayırın. Yanlış argümanlar dönüşümü bozabilir.</p>
+          <p class="field-hint">{$_("home.extraArgsHint")}</p>
         </label>
 
         {#if previewLine}
           <div class="preview">
-            <span class="preview-label">Örnek ffmpeg argümanları</span>
+            <span class="preview-label">{$_("home.argsPreview")}</span>
             <code class="preview-code">{previewLine}</code>
           </div>
         {/if}
@@ -1055,10 +1056,10 @@
           {#if convertProgress != null}
             FFmpeg… %<strong class="pct">{Math.round(convertProgress)}</strong>
           {:else}
-            FFmpeg çalışıyor… (süre bilinmiyor, yüzde gösterilemiyor)
+            {$_("home.ffmpegUnknownDuration")}
           {/if}
         {:else}
-          İlerleme
+          {$_("home.progressIdle")}
         {/if}
       </div>
       <div

@@ -37,8 +37,8 @@ export type TargetProfileId =
 
 export interface SocialMeta {
   platform: "whatsapp" | "instagram" | "messenger" | "telegram" | "youtube" | "tiktok" | "linkedin" | "x" | "discord";
-  /** UI’da `<optgroup>` başlığı */
-  platformLabelTr: string;
+  /** UI’da `<optgroup>` başlığı — marka adı, iki dilde de aynı */
+  platformLabel: string;
   /** Platform dosya boyutu sınırı (MB) — video/ses için `-fs` ile uygulanır */
   maxFileSizeMb: number;
   /** Otomatik ölçekleme genişliği (px); tanımlanmamışsa orijinal boyut korunur */
@@ -46,12 +46,15 @@ export interface SocialMeta {
   forcedHeight?: number;
   /** Kalite ön ayarı yerine gösterilecek sabit bilgi metni */
   infoTr: string;
+  infoEn: string;
 }
 
 export interface TargetProfile {
   id: TargetProfileId;
   labelTr: string;
+  labelEn: string;
   descriptionTr: string;
+  descriptionEn: string;
   outputExtension: string;
   mode: ConversionMode;
   allowedInputKinds: readonly MediaKind[];
@@ -71,7 +74,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "mp4-h264-aac",
     labelTr: "MP4 (H.264 + AAC)",
+    labelEn: "MP4 (H.264 + AAC)",
     descriptionTr: "Yaygın uyumluluk; çoğu cihazda sorunsuz oynatılır.",
+    descriptionEn: "Broad compatibility; plays smoothly on almost any device.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: NON_IMAGE,
@@ -82,7 +87,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "mp4-h265-aac",
     labelTr: "MP4 (H.265 / HEVC + AAC)",
+    labelEn: "MP4 (H.265 / HEVC + AAC)",
     descriptionTr: "H.264'e kıyasla ~%50 daha küçük dosya; Apple ve modern cihazlarda desteklenir.",
+    descriptionEn: "About 50% smaller than H.264; supported on Apple and modern devices.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: NON_IMAGE,
@@ -93,7 +100,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "mp4-av1-aac",
     labelTr: "MP4 (AV1 + AAC)",
+    labelEn: "MP4 (AV1 + AAC)",
     descriptionTr: "Açık kaynak, en verimli sıkıştırma; Netflix ve YouTube standartlarında kullanılır.",
+    descriptionEn: "Open source, the most efficient compression; used by Netflix and YouTube.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: NON_IMAGE,
@@ -104,7 +113,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "webm-vp9-opus",
     labelTr: "WebM (VP9 + Opus)",
+    labelEn: "WebM (VP9 + Opus)",
     descriptionTr: "Web ve sıkıştırma odaklı; tarayıcı uyumu iyi.",
+    descriptionEn: "Web and compression oriented; good browser support.",
     outputExtension: "webm",
     mode: "transcode",
     allowedInputKinds: NON_IMAGE,
@@ -115,7 +126,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "mkv-h264-aac",
     labelTr: "MKV (H.264 + AAC)",
+    labelEn: "MKV (H.264 + AAC)",
     descriptionTr: "Esnek konteyner; altyazı ve çoklu akış için uygun.",
+    descriptionEn: "Flexible container; suitable for subtitles and multiple streams.",
     outputExtension: "mkv",
     mode: "transcode",
     allowedInputKinds: NON_IMAGE,
@@ -126,7 +139,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "audio-mp3",
     labelTr: "MP3 (yalın ses)",
+    labelEn: "MP3 (audio only)",
     descriptionTr: "Yalnızca ses çıktısı; video şeridi olmaz.",
+    descriptionEn: "Audio-only output; no video track.",
     outputExtension: "mp3",
     mode: "transcode",
     allowedInputKinds: VIDEO_AUDIO,
@@ -137,7 +152,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "audio-wav",
     labelTr: "WAV (PCM)",
+    labelEn: "WAV (PCM)",
     descriptionTr: "Sıkıştırmasız veya hafif PCM; düzenleme için uygun.",
+    descriptionEn: "Uncompressed or lightly compressed PCM; suitable for editing.",
     outputExtension: "wav",
     mode: "transcode",
     allowedInputKinds: VIDEO_AUDIO,
@@ -148,7 +165,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "audio-m4a-aac",
     labelTr: "M4A (AAC)",
+    labelEn: "M4A (AAC)",
     descriptionTr: "AAC ses; Apple ekosisteminde yaygın.",
+    descriptionEn: "AAC audio; common in the Apple ecosystem.",
     outputExtension: "m4a",
     mode: "transcode",
     allowedInputKinds: VIDEO_AUDIO,
@@ -159,7 +178,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "audio-flac",
     labelTr: "FLAC (kayıpsız ses)",
+    labelEn: "FLAC (lossless audio)",
     descriptionTr: "Kayıpsız sıkıştırma; arşiv ve düzenleme için uygun.",
+    descriptionEn: "Lossless compression; suitable for archiving and editing.",
     outputExtension: "flac",
     mode: "transcode",
     allowedInputKinds: VIDEO_AUDIO,
@@ -170,7 +191,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "audio-opus",
     labelTr: "Opus (Ogg)",
+    labelEn: "Opus (Ogg)",
     descriptionTr: "Düşük bit hızında verimli ses (libopus).",
+    descriptionEn: "Efficient audio at low bitrates (libopus).",
     outputExtension: "opus",
     mode: "transcode",
     allowedInputKinds: VIDEO_AUDIO,
@@ -181,7 +204,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "remux-copy",
     labelTr: "Akışları kopyala (hızlı)",
+    labelEn: "Copy streams (fast)",
     descriptionTr: "Yeniden kodlama yok — aynı codec’ler yeni kabukta.",
+    descriptionEn: "No re-encoding — the same codecs in a new container.",
     outputExtension: "mkv",
     mode: "copy",
     allowedInputKinds: VIDEO_AUDIO,
@@ -192,7 +217,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "image-png",
     labelTr: "PNG (görüntü)",
+    labelEn: "PNG (image)",
     descriptionTr: "Kayıpsız görüntü çıktısı.",
+    descriptionEn: "Lossless image output.",
     outputExtension: "png",
     mode: "transcode",
     allowedInputKinds: ["image-only"],
@@ -203,7 +230,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "image-jpeg",
     labelTr: "JPEG (görüntü)",
+    labelEn: "JPEG (image)",
     descriptionTr: "Kayıplı sıkıştırma; fotoğraf paylaşımı için uygun.",
+    descriptionEn: "Lossy compression; suitable for sharing photos.",
     outputExtension: "jpg",
     mode: "transcode",
     allowedInputKinds: ["image-only"],
@@ -214,7 +243,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "image-webp",
     labelTr: "WebP (görüntü)",
+    labelEn: "WebP (image)",
     descriptionTr: "Web için sıkıştırılmış görüntü (libwebp).",
+    descriptionEn: "Compressed image for the web (libwebp).",
     outputExtension: "webp",
     mode: "transcode",
     allowedInputKinds: ["image-only"],
@@ -225,7 +256,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "image-avif",
     labelTr: "AVIF (görüntü)",
+    labelEn: "AVIF (image)",
     descriptionTr: "Modern web formatı; AV1 tabanlı yüksek sıkıştırma (libsvtav1).",
+    descriptionEn: "Modern web format; AV1-based high compression (libsvtav1).",
     outputExtension: "avif",
     mode: "transcode",
     allowedInputKinds: ["image-only"],
@@ -238,7 +271,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "social-wp-video",
     labelTr: "Video (1280×720, maks. 16 MB)",
+    labelEn: "Video (1280×720, max 16 MB)",
     descriptionTr: "WhatsApp Business: MP4 H.264, 1280×720, maks. 16 MB.",
+    descriptionEn: "WhatsApp Business: MP4 H.264, 1280×720, max 16 MB.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -247,17 +282,20 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "whatsapp",
-      platformLabelTr: "WhatsApp Business",
+      platformLabel: "WhatsApp Business",
       maxFileSizeMb: 16,
       forcedWidth: 1280,
       forcedHeight: 720,
-      infoTr: "MP4 H.264 + AAC · 1280×720 · Maks. 16 MB"
+      infoTr: "MP4 H.264 + AAC · 1280×720 · Maks. 16 MB",
+      infoEn: "MP4 H.264 + AAC · 1280×720 · Max 16 MB"
     }
   },
   {
     id: "social-wp-image",
     labelTr: "Görüntü (JPEG, maks. 5 MB)",
+    labelEn: "Image (JPEG, max 5 MB)",
     descriptionTr: "WhatsApp Business: JPEG, maks. 5 MB.",
+    descriptionEn: "WhatsApp Business: JPEG, max 5 MB.",
     outputExtension: "jpg",
     mode: "transcode",
     allowedInputKinds: ["image-only"],
@@ -266,15 +304,18 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "whatsapp",
-      platformLabelTr: "WhatsApp Business",
+      platformLabel: "WhatsApp Business",
       maxFileSizeMb: 5,
-      infoTr: "JPEG · Maks. 5 MB"
+      infoTr: "JPEG · Maks. 5 MB",
+      infoEn: "JPEG · Max 5 MB"
     }
   },
   {
     id: "social-wp-audio",
     labelTr: "Ses (AAC/M4A, maks. 16 MB)",
+    labelEn: "Audio (AAC/M4A, max 16 MB)",
     descriptionTr: "WhatsApp Business: AAC ses, maks. 16 MB.",
+    descriptionEn: "WhatsApp Business: AAC audio, max 16 MB.",
     outputExtension: "m4a",
     mode: "transcode",
     allowedInputKinds: ["video", "audio"],
@@ -283,9 +324,10 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: false,
     socialMeta: {
       platform: "whatsapp",
-      platformLabelTr: "WhatsApp Business",
+      platformLabel: "WhatsApp Business",
       maxFileSizeMb: 16,
-      infoTr: "AAC · M4A · Maks. 16 MB"
+      infoTr: "AAC · M4A · Maks. 16 MB",
+      infoEn: "AAC · M4A · Max 16 MB"
     }
   },
 
@@ -293,7 +335,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "social-ig-feed",
     labelTr: "Feed Videosu (1080×1080, maks. 100 MB)",
+    labelEn: "Feed Video (1080×1080, max 100 MB)",
     descriptionTr: "Instagram Business feed: kare format, MP4 H.264.",
+    descriptionEn: "Instagram Business feed: square format, MP4 H.264.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -302,17 +346,20 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "instagram",
-      platformLabelTr: "Instagram Business",
+      platformLabel: "Instagram Business",
       maxFileSizeMb: 100,
       forcedWidth: 1080,
       forcedHeight: 1080,
-      infoTr: "MP4 H.264 + AAC · 1080×1080 (kare) · Maks. 100 MB"
+      infoTr: "MP4 H.264 + AAC · 1080×1080 (kare) · Maks. 100 MB",
+      infoEn: "MP4 H.264 + AAC · 1080×1080 (square) · Max 100 MB"
     }
   },
   {
     id: "social-ig-stories",
     labelTr: "Reels / Stories (1080×1920, maks. 100 MB)",
+    labelEn: "Reels / Stories (1080×1920, max 100 MB)",
     descriptionTr: "Instagram Reels ve Stories: dikey format, MP4 H.264.",
+    descriptionEn: "Instagram Reels and Stories: vertical format, MP4 H.264.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -321,17 +368,20 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "instagram",
-      platformLabelTr: "Instagram Business",
+      platformLabel: "Instagram Business",
       maxFileSizeMb: 100,
       forcedWidth: 1080,
       forcedHeight: 1920,
-      infoTr: "MP4 H.264 + AAC · 1080×1920 (dikey 9:16) · Maks. 100 MB"
+      infoTr: "MP4 H.264 + AAC · 1080×1920 (dikey 9:16) · Maks. 100 MB",
+      infoEn: "MP4 H.264 + AAC · 1080×1920 (vertical 9:16) · Max 100 MB"
     }
   },
   {
     id: "social-ig-image",
     labelTr: "Görüntü (1080×1080, maks. 8 MB)",
+    labelEn: "Image (1080×1080, max 8 MB)",
     descriptionTr: "Instagram Business: kare JPEG, maks. 8 MB.",
+    descriptionEn: "Instagram Business: square JPEG, max 8 MB.",
     outputExtension: "jpg",
     mode: "transcode",
     allowedInputKinds: ["image-only"],
@@ -340,11 +390,12 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "instagram",
-      platformLabelTr: "Instagram Business",
+      platformLabel: "Instagram Business",
       maxFileSizeMb: 8,
       forcedWidth: 1080,
       forcedHeight: 1080,
-      infoTr: "JPEG · 1080×1080 (kare) · Maks. 8 MB"
+      infoTr: "JPEG · 1080×1080 (kare) · Maks. 8 MB",
+      infoEn: "JPEG · 1080×1080 (square) · Max 8 MB"
     }
   },
 
@@ -352,7 +403,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "social-msg-video",
     labelTr: "Video (1280×720, maks. 25 MB)",
+    labelEn: "Video (1280×720, max 25 MB)",
     descriptionTr: "Messenger Business: MP4 H.264, maks. 25 MB.",
+    descriptionEn: "Messenger Business: MP4 H.264, max 25 MB.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -361,17 +414,20 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "messenger",
-      platformLabelTr: "Messenger Business",
+      platformLabel: "Messenger Business",
       maxFileSizeMb: 25,
       forcedWidth: 1280,
       forcedHeight: 720,
-      infoTr: "MP4 H.264 + AAC · 1280×720 · Maks. 25 MB"
+      infoTr: "MP4 H.264 + AAC · 1280×720 · Maks. 25 MB",
+      infoEn: "MP4 H.264 + AAC · 1280×720 · Max 25 MB"
     }
   },
   {
     id: "social-msg-image",
     labelTr: "Görüntü (JPEG, maks. 25 MB)",
+    labelEn: "Image (JPEG, max 25 MB)",
     descriptionTr: "Messenger Business: JPEG, maks. 25 MB.",
+    descriptionEn: "Messenger Business: JPEG, max 25 MB.",
     outputExtension: "jpg",
     mode: "transcode",
     allowedInputKinds: ["image-only"],
@@ -380,9 +436,10 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "messenger",
-      platformLabelTr: "Messenger Business",
+      platformLabel: "Messenger Business",
       maxFileSizeMb: 25,
-      infoTr: "JPEG · Maks. 25 MB"
+      infoTr: "JPEG · Maks. 25 MB",
+      infoEn: "JPEG · Max 25 MB"
     }
   },
 
@@ -390,7 +447,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "social-tg-video",
     labelTr: "Video (1280×720, maks. 2 GB)",
+    labelEn: "Video (1280×720, max 2 GB)",
     descriptionTr: "Telegram Business: MP4 H.264, maks. 2 GB.",
+    descriptionEn: "Telegram Business: MP4 H.264, max 2 GB.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -399,17 +458,20 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "telegram",
-      platformLabelTr: "Telegram Business",
+      platformLabel: "Telegram Business",
       maxFileSizeMb: 2000,
       forcedWidth: 1280,
       forcedHeight: 720,
-      infoTr: "MP4 H.264 + AAC · 1280×720 · Maks. 2 GB"
+      infoTr: "MP4 H.264 + AAC · 1280×720 · Maks. 2 GB",
+      infoEn: "MP4 H.264 + AAC · 1280×720 · Max 2 GB"
     }
   },
   {
     id: "social-tg-image",
     labelTr: "Görüntü (JPEG, maks. 10 MB)",
+    labelEn: "Image (JPEG, max 10 MB)",
     descriptionTr: "Telegram Business: fotoğraf olarak gönderim, JPEG, maks. 10 MB.",
+    descriptionEn: "Telegram Business: sent as a photo, JPEG, max 10 MB.",
     outputExtension: "jpg",
     mode: "transcode",
     allowedInputKinds: ["image-only"],
@@ -418,15 +480,18 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "telegram",
-      platformLabelTr: "Telegram Business",
+      platformLabel: "Telegram Business",
       maxFileSizeMb: 10,
-      infoTr: "JPEG (fotoğraf modu) · Maks. 10 MB"
+      infoTr: "JPEG (fotoğraf modu) · Maks. 10 MB",
+      infoEn: "JPEG (photo mode) · Max 10 MB"
     }
   },
   {
     id: "social-tg-audio",
     labelTr: "Ses (MP3, maks. 2 GB)",
+    labelEn: "Audio (MP3, max 2 GB)",
     descriptionTr: "Telegram Business: MP3 ses dosyası, maks. 2 GB.",
+    descriptionEn: "Telegram Business: MP3 audio file, max 2 GB.",
     outputExtension: "mp3",
     mode: "transcode",
     allowedInputKinds: ["video", "audio"],
@@ -435,9 +500,10 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: false,
     socialMeta: {
       platform: "telegram",
-      platformLabelTr: "Telegram Business",
+      platformLabel: "Telegram Business",
       maxFileSizeMb: 2000,
-      infoTr: "MP3 · Maks. 2 GB"
+      infoTr: "MP3 · Maks. 2 GB",
+      infoEn: "MP3 · Max 2 GB"
     }
   },
 
@@ -445,7 +511,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "social-yt-1080",
     labelTr: "1080p HD (1920×1080, H.264)",
+    labelEn: "1080p HD (1920×1080, H.264)",
     descriptionTr: "YouTube: 1080p HD, MP4 H.264 + AAC, 16:9.",
+    descriptionEn: "YouTube: 1080p HD, MP4 H.264 + AAC, 16:9.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -454,17 +522,20 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "youtube",
-      platformLabelTr: "YouTube",
+      platformLabel: "YouTube",
       maxFileSizeMb: 128000,
       forcedWidth: 1920,
       forcedHeight: 1080,
-      infoTr: "MP4 H.264 + AAC · 1920×1080 (16:9) · Maks. 128 GB"
+      infoTr: "MP4 H.264 + AAC · 1920×1080 (16:9) · Maks. 128 GB",
+      infoEn: "MP4 H.264 + AAC · 1920×1080 (16:9) · Max 128 GB"
     }
   },
   {
     id: "social-yt-4k",
     labelTr: "4K UHD (3840×2160, H.264)",
+    labelEn: "4K UHD (3840×2160, H.264)",
     descriptionTr: "YouTube: 4K UHD, MP4 H.264 + AAC, 16:9.",
+    descriptionEn: "YouTube: 4K UHD, MP4 H.264 + AAC, 16:9.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -473,11 +544,12 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "youtube",
-      platformLabelTr: "YouTube",
+      platformLabel: "YouTube",
       maxFileSizeMb: 128000,
       forcedWidth: 3840,
       forcedHeight: 2160,
-      infoTr: "MP4 H.264 + AAC · 3840×2160 (4K) · Maks. 128 GB"
+      infoTr: "MP4 H.264 + AAC · 3840×2160 (4K) · Maks. 128 GB",
+      infoEn: "MP4 H.264 + AAC · 3840×2160 (4K) · Max 128 GB"
     }
   },
 
@@ -485,7 +557,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "social-tt-video",
     labelTr: "Video (1080×1920, 9:16 dikey)",
+    labelEn: "Video (1080×1920, 9:16 vertical)",
     descriptionTr: "TikTok: dikey format, MP4 H.264 + AAC, maks. 287 MB.",
+    descriptionEn: "TikTok: vertical format, MP4 H.264 + AAC, max 287 MB.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -494,11 +568,12 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "tiktok",
-      platformLabelTr: "TikTok",
+      platformLabel: "TikTok",
       maxFileSizeMb: 287,
       forcedWidth: 1080,
       forcedHeight: 1920,
-      infoTr: "MP4 H.264 + AAC · 1080×1920 (9:16 dikey) · Maks. 287 MB"
+      infoTr: "MP4 H.264 + AAC · 1080×1920 (9:16 dikey) · Maks. 287 MB",
+      infoEn: "MP4 H.264 + AAC · 1080×1920 (9:16 vertical) · Max 287 MB"
     }
   },
 
@@ -506,7 +581,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "social-li-video",
     labelTr: "Video (1920×1080, 16:9, maks. 5 GB)",
+    labelEn: "Video (1920×1080, 16:9, max 5 GB)",
     descriptionTr: "LinkedIn: yatay format, MP4 H.264 + AAC.",
+    descriptionEn: "LinkedIn: landscape format, MP4 H.264 + AAC.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -515,11 +592,12 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "linkedin",
-      platformLabelTr: "LinkedIn",
+      platformLabel: "LinkedIn",
       maxFileSizeMb: 5000,
       forcedWidth: 1920,
       forcedHeight: 1080,
-      infoTr: "MP4 H.264 + AAC · 1920×1080 (16:9) · Maks. 5 GB"
+      infoTr: "MP4 H.264 + AAC · 1920×1080 (16:9) · Maks. 5 GB",
+      infoEn: "MP4 H.264 + AAC · 1920×1080 (16:9) · Max 5 GB"
     }
   },
 
@@ -527,7 +605,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "social-x-video",
     labelTr: "Video (1920×1080, maks. 512 MB)",
+    labelEn: "Video (1920×1080, max 512 MB)",
     descriptionTr: "X (Twitter): MP4 H.264 + AAC, maks. 512 MB, maks. 140 sn.",
+    descriptionEn: "X (Twitter): MP4 H.264 + AAC, max 512 MB, max 140 s.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -536,11 +616,12 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "x",
-      platformLabelTr: "X (Twitter)",
+      platformLabel: "X (Twitter)",
       maxFileSizeMb: 512,
       forcedWidth: 1920,
       forcedHeight: 1080,
-      infoTr: "MP4 H.264 + AAC · 1920×1080 · Maks. 512 MB · Maks. 140 sn"
+      infoTr: "MP4 H.264 + AAC · 1920×1080 · Maks. 512 MB · Maks. 140 sn",
+      infoEn: "MP4 H.264 + AAC · 1920×1080 · Max 512 MB · Max 140 s"
     }
   },
 
@@ -548,7 +629,9 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
   {
     id: "social-dc-video",
     labelTr: "Video (1920×1080, maks. 10 MB)",
+    labelEn: "Video (1920×1080, max 10 MB)",
     descriptionTr: "Discord: Nitro olmadan maks. 10 MB, MP4 H.264 + AAC.",
+    descriptionEn: "Discord: max 10 MB without Nitro, MP4 H.264 + AAC.",
     outputExtension: "mp4",
     mode: "transcode",
     allowedInputKinds: ["video"],
@@ -557,11 +640,12 @@ export const TARGET_PROFILES: readonly TargetProfile[] = [
     hasVideoOut: true,
     socialMeta: {
       platform: "discord",
-      platformLabelTr: "Discord",
+      platformLabel: "Discord",
       maxFileSizeMb: 10,
       forcedWidth: 1920,
       forcedHeight: 1080,
-      infoTr: "MP4 H.264 + AAC · 1920×1080 · Maks. 10 MB (Nitro'suz)"
+      infoTr: "MP4 H.264 + AAC · 1920×1080 · Maks. 10 MB (Nitro'suz)",
+      infoEn: "MP4 H.264 + AAC · 1920×1080 · Max 10 MB (without Nitro)"
     }
   }
 ];
