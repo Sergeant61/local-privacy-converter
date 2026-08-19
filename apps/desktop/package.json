@@ -25,7 +25,8 @@
     "lint": "eslint src electron",
     "typecheck": "svelte-kit sync && svelte-check --fail-on-warnings && tsc --noEmit -p tsconfig.electron.json",
     "package": "electron-builder",
-    "package:dir": "electron-builder --dir"
+    "package:dir": "electron-builder --dir",
+    "test": "vitest run"
   },
   "dependencies": {
     "@lfc/ffmpeg-core": "workspace:*",

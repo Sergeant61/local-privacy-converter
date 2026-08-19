@@ -6,37 +6,40 @@ import type {
   IpcSaveOutputDialogRequest
 } from "@lfc/validators";
 
-const VERSION_CHANNEL = "lfc/ffmpeg/get-version";
-const PROBE_CHANNEL = "lfc/media/probe";
-const CAPABILITIES_CHANNEL = "lfc/ffmpeg/capabilities";
-const OPEN_MEDIA_CHANNEL = "lfc/media/open-dialog";
-const SAVE_OUTPUT_CHANNEL = "lfc/media/save-output-dialog";
-const RUN_CONVERT_CHANNEL = "lfc/ffmpeg/convert";
-const RUN_CONVERT_PROGRESS_CHANNEL = "lfc/ffmpeg/convert-progress";
-const READ_PREVIEW_CHANNEL = "lfc/media/read-preview";
-const GET_OUTPUT_DIR_CHANNEL = "lfc/media/get-output-dir";
-const SHOW_IN_FOLDER_CHANNEL = "lfc/shell/show-in-folder";
-const CANCEL_CONVERT_CHANNEL = "lfc/ffmpeg/cancel-convert";
-const AUDIO_MERGE_CHANNEL = "lfc/ffmpeg/audio-merge";
-const VIDEO_MERGE_CHANNEL = "lfc/ffmpeg/video-merge";
-const FRAME_EXTRACT_CHANNEL = "lfc/ffmpeg/frame-extract";
-const GIF_CONVERT_CHANNEL = "lfc/ffmpeg/gif-convert";
-const SETTINGS_GET_CHANNEL = "lfc/settings/get";
-const SETTINGS_SET_CHANNEL = "lfc/settings/set";
-const SUBTITLE_PROBE_CHANNEL = "lfc/ffmpeg/subtitle-probe";
-const SUBTITLE_EXTRACT_CHANNEL = "lfc/ffmpeg/subtitle-extract";
-const VIDEO_TRIM_CHANNEL = "lfc/ffmpeg/video-trim";
-const AUDIO_NORMALIZE_CHANNEL = "lfc/ffmpeg/audio-normalize";
-const WATERMARK_CHANNEL = "lfc/ffmpeg/watermark";
-const METADATA_READ_CHANNEL = "lfc/ffmpeg/metadata-read";
-const METADATA_WRITE_CHANNEL = "lfc/ffmpeg/metadata-write";
-const APNG_CONVERT_CHANNEL = "lfc/ffmpeg/apng-convert";
-const RUN_CONVERT_LOG_CHANNEL = "lfc/ffmpeg/convert-log";
-const PROFILES_GET_CHANNEL = "lfc/profiles/get";
-const PROFILES_SAVE_CHANNEL = "lfc/profiles/save";
-const PROFILES_DELETE_CHANNEL = "lfc/profiles/delete";
-const PDF_CONVERT_CHANNEL = "lfc/ffmpeg/pdf-convert";
-const CHECK_UPDATE_CHANNEL = "lfc/app/check-update";
+import {
+  APNG_CONVERT_CHANNEL,
+  AUDIO_MERGE_CHANNEL,
+  AUDIO_NORMALIZE_CHANNEL,
+  CANCEL_CONVERT_CHANNEL,
+  CAPABILITIES_CHANNEL,
+  CHECK_UPDATE_CHANNEL,
+  FRAME_EXTRACT_CHANNEL,
+  GET_OUTPUT_DIR_CHANNEL,
+  GIF_CONVERT_CHANNEL,
+  METADATA_READ_CHANNEL,
+  METADATA_WRITE_CHANNEL,
+  OPEN_MEDIA_CHANNEL,
+  PDF_CONVERT_CHANNEL,
+  PROBE_CHANNEL,
+  PROFILES_DELETE_CHANNEL,
+  PROFILES_GET_CHANNEL,
+  PROFILES_SAVE_CHANNEL,
+  READ_PREVIEW_CHANNEL,
+  RUN_CONVERT_CHANNEL,
+  RUN_CONVERT_LOG_CHANNEL,
+  RUN_CONVERT_PROGRESS_CHANNEL,
+  SAVE_OUTPUT_CHANNEL,
+  SETTINGS_GET_CHANNEL,
+  SETTINGS_SET_CHANNEL,
+  SHOW_IN_FOLDER_CHANNEL,
+  SUBTITLE_EXTRACT_CHANNEL,
+  SUBTITLE_PROBE_CHANNEL,
+  VERSION_CHANNEL,
+  VIDEO_MERGE_CHANNEL,
+  VIDEO_TRIM_CHANNEL,
+  WATERMARK_CHANNEL
+} from "./channels";
+
 
 contextBridge.exposeInMainWorld("lfc", {
   // GÜVENLİK: ikili yolu artık köprüden geçmiyor; ana süreç ayarlardaki
